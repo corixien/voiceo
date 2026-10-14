@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Voiceo Overlay</title>
+<style>
+  :root { --orange:#D97757; --bg:#1F1E1D; --edge:#3A3936; --text:#FAF9F5; --muted:#B0AEA5; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; cursor: default; }
+  body { width: 264px; height: 64px; display: flex; align-items: center; justify-content: center;
+         font: 500 13px/1.2 ui-sans-serif, system-ui, "Inter", "Segoe UI", sans-serif; }
+  .pill { width: 252px; height: 52px; border-radius: 26px; background: var(--bg);
+          border: 1px solid var(--edge); box-shadow: 0 6px 22px rgba(0,0,0,.35);
+          display: flex; align-items: center; gap: 12px; padding: 0 18px 0 14px; color: var(--text);
+          transform: translateY(8px) scale(.96); opacity: 0; transition: transform .22s cubic-bezier(.2,.9,.3,1.2), opacity .18s; }
+  .pill.on { transform: none; opacity: 1; }
+  canvas { flex: none; width: 44px; height: 36px; image-rendering: pixelated; }
+  .viz { flex: 1; min-width: 0; height: 28px; display: flex; align-items: center; gap: 3px; }
+  .bar { flex: 1; min-width: 2px; max-width: 5px; border-radius: 3px; background: var(--orange); height: 3px; opacity: .9; }
+  .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .label.muted { color: var(--muted); }
+  .label.err { color: #E8A58E; }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="pill" id="pill">
+    <canvas id="mascot" width="44" height="36"></canvas>
+    <div class="viz" id="viz"></div>
+    <div class="label hide" id="label"></div>
+  </div>
+<script src="mascot.js"></script>
+<script>
+  const BARS = 20;
+  const pill = document.getElementById("pill");
+  const viz = document.getElementById("viz");
+  const label = document.getElementById("label");
+  const canvas = document.getElementById("mascot");
+  const bars = [];
+  for (let i = 0; i < BARS; i++) { const b = document.createElement("div"); b.className = "bar"; viz.appendChild(b); bars.push(b); }
+
+  let state = "idle", level = 0, smooth = 0;
+  const hist = new Array(BARS).fill(0);
+  let lastPush = 0;
+
+  function setLabel(text, cls) {
+    label.textContent = text; label.className = "label " + (cls || "");
+  }
+
+  function setState(s, msg) {
+    state = s;
+    const wave = s === "listening" || s === "thinking";
+    viz.classList.toggle("hide", !wave);
+    label.classList.toggle("hide", wave);
+    if (s === "done") setLabel("Eingefügt", "");
+    else if (s === "error") setLabel(msg || "Fehler", "err");
+    pill.classList.toggle("on", s !== "idle");
+  }
+
+  const ev = window.__TAURI__.event;
+  ev.listen("voiceo://state", (e) => setState(e.payload.state, e.payload.message));
+  ev.listen("voiceo://level", (e) => { level = e.payload; });
+
+  function frame(t) {
+    smooth += (level - smooth) * 0.35;
+    if (state !== "listening") level *= 0.8;
+    if (t - lastPush > 45) {
+      lastPush = t;
+      hist.shift();
+      hist.push(state === "listening" ? Math.min(1, smooth * 12)
+        : state === "thinking" ? 0.18 + 0.12 * Math.sin(t / 220) : 0);
+    }
+    for (let i = 0; i < BARS; i++) {
+      let v = hist[i];
+      if (state === "thinking") v = 0.15 + 0.35 * (0.5 + 0.5 * Math.sin(t / 240 - i * 0.55));
+      bars[i].style.height = Math.max(3, Math.round(v * 28)) + "px";
+    }
+    drawMascot(canvas, state, t, smooth);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

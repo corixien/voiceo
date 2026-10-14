@@ -1,0 +1,14 @@
+{
+  "name": "voiceo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Voice dictation powered by Groq",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

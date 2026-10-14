@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voiceo</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<aside>
+  <div class="brand"><canvas id="logo" width="44" height="36"></canvas><b>Voiceo</b></div>
+  <nav id="nav">
+    <button data-tab="general" class="active">Allgemein</button>
+    <button data-tab="output">Ausgabe</button>
+    <button data-tab="modes">Modi</button>
+    <button data-tab="dict">Wörterbuch</button>
+    <button data-tab="history">Verlauf</button>
+    <button data-tab="advanced">Erweitert</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="status-mini"><span class="dot" id="mini-dot"></span><span id="mini-text">Prüfe…</span></div>
+</aside>
+
+<main>
+  <!-- ALLGEMEIN -->
+  <section id="tab-general" class="active">
+    <h1>Allgemein</h1>
+    <p class="sub">Hotkey, Groq-Zugang und Sprache.</p>
+
+    <div class="card">
+      <h2>Groq</h2>
+      <div class="row">
+        <div class="l"><b>API-Key</b><small>Kostenlos auf console.groq.com. Wird lokal gespeichert.</small></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="password" data-k="api_key" placeholder="gsk_…" autocomplete="off" spellcheck="false">
+          <button class="btn" id="test-key">Testen</button>
+        </div>
+      </div>
+      <div class="row" id="key-msg-row" style="display:none"><span id="key-msg"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>Diktat</h2>
+      <div class="row">
+        <div class="l"><b>Hotkey</b><small id="hk-hint">Taste oder Kombination wählen.</small></div>
+        <div style="display:flex;gap:10px;align-items:center" id="hk-box">
+          <div class="keys" id="hk-keys"></div>
+          <button class="btn" id="hk-change">Ändern</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="l"><b>Verhalten</b><small>Halten = Push-to-talk. Umschalten = Drücken zum Starten und Stoppen.</small></div>
+        <div class="seg" data-seg="hotkey_mode">
+          <button data-v="hold">Halten</button><button data-v="toggle">Umschalten</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="l"><b>Sprache</b><small>Automatisch erkennt auch Deutsch/Englisch-Mix.</small></div>
+        <select data-k="language">
+          <option value="auto">Automatisch</option>
+          <option value="de">Deutsch</option>
+          <option value="en">Englisch</option>
+          <option value="fr">Französisch</option>
+          <option value="es">Spanisch</option>
+          <option value="it">Italienisch</option>
+          <option value="pt">Portugiesisch</option>
+          <option value="nl">Niederländisch</option>
+          <option value="pl">Polnisch</option>
+          <option value="tr">Türkisch</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="l"><b>Overlay anzeigen</b><small>Maskottchen und Wellenform beim Diktieren.</small></div>
+        <label class="switch"><input type="checkbox" data-k="overlay"><i></i></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>System</h2>
+      <div id="checks"></div>
+    </div>
+  </section>
+
+  <!-- AUSGABE -->
+  <section id="tab-output">
+    <h1>Ausgabe</h1>
+    <p class="sub">Was mit dem fertigen Text passiert.</p>
+    <div class="card">
+      <div class="row">
+        <div class="l"><b>Automatisch einfügen</b><small>Text direkt am Cursor im aktiven Fenster einfügen.</small></div>
+        <label class="switch"><input type="checkbox" data-k="auto_insert"><i></i></label>
+      </div>
+      <div class="row">
+        <div class="l"><b>Einfüge-Methode</b><small>Einfügen simuliert Strg+V. Tippen nutzt wtype (nicht jeder Desktop).</small></div>
+        <div class="seg" data-seg="insert_method">
+          <button data-v="paste">Einfügen</button><button data-v="type">Tippen</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="l"><b>Einfüge-Kürzel</b><small>In Terminals meist Strg+Umschalt+V.</small></div>
+        <div class="seg" data-seg="paste_shortcut">
+          <button data-v="ctrl+v">Strg+V</button><button data-v="ctrl+shift+v">Strg+Umschalt+V</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="l"><b>In Zwischenablage kopieren</b><small>Text bleibt nach dem Einfügen in der Zwischenablage.</small></div>
+        <label class="switch"><input type="checkbox" data-k="copy_to_clipboard"><i></i></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- MODI -->
+  <section id="tab-modes">
+    <h1>Modi</h1>
+    <p class="sub">Wie der Rohtext nachbearbeitet wird.</p>
+    <div class="card">
+      <div class="row">
+        <div class="l"><b>Nachbearbeitung</b><small>Ein Groq-Sprachmodell räumt den Whisper-Text auf.</small></div>
+        <label class="switch"><input type="checkbox" data-k="cleanup"><i></i></label>
+      </div>
+      <div class="modes" id="modes"></div>
+      <div class="row col" id="custom-wrap" style="display:none">
+        <div class="l"><b>Eigener Prompt</b><small>Wird an die Grundregeln angehängt. Beschreibe Stil und Format.</small></div>
+        <textarea data-k="custom_prompt" spellcheck="false" placeholder="z. B. Formuliere als Jira-Ticket mit Titel und Akzeptanzkriterien."></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- WÖRTERBUCH -->
+  <section id="tab-dict">
+    <h1>Wörterbuch</h1>
+    <p class="sub">Namen, Marken und Fachbegriffe, die richtig geschrieben werden sollen.</p>
+    <div class="card">
+      <div class="row col">
+        <div class="l"><b>Ein Begriff pro Zeile</b><small>Fließt in Whisper und in die Nachbearbeitung ein.</small></div>
+        <textarea data-dict spellcheck="false" placeholder="Voiceo&#10;Groq&#10;Kubernetes"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- VERLAUF -->
+  <section id="tab-history">
+    <h1>Verlauf</h1>
+    <p class="sub">Letzte Diktate, nur lokal gespeichert.</p>
+    <div style="margin-bottom:14px"><button class="btn small" id="hist-clear">Verlauf löschen</button></div>
+    <div class="card" id="hist-list"></div>
+  </section>
+
+  <!-- ERWEITERT -->
+  <section id="tab-advanced">
+    <h1>Erweitert</h1>
+    <p class="sub">Modelle und Feintuning. Die Standardwerte sind für Qualität gewählt.</p>
+    <div class="card">
+      <h2>Modelle</h2>
+      <div class="row">
+        <div class="l"><b>Transkription</b><small>whisper-large-v3 = beste Qualität. -turbo = schneller.</small></div>
+        <input type="text" data-k="stt_model" list="stt-models" spellcheck="false">
+        <datalist id="stt-models"><option>whisper-large-v3</option><option>whisper-large-v3-turbo</option></datalist>
+      </div>
+      <div class="row">
+        <div class="l"><b>Nachbearbeitung</b><small>Chat-Modell für den Cleanup.</small></div>
+        <input type="text" data-k="llm_model" list="llm-models" spellcheck="false">
+        <datalist id="llm-models"><option>llama-3.3-70b-versatile</option><option>llama-3.1-8b-instant</option></datalist>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Qualität</h2>
+      <div class="row">
+        <div class="l"><b>Whisper-Temperatur</b><small>0 = deterministisch, empfohlen.</small></div>
+        <input type="number" data-k="stt_temperature" min="0" max="1" step="0.1">
+      </div>
+      <div class="row">
+        <div class="l"><b>Cleanup-Temperatur</b><small>Niedrig = textnah. Höher = freier formuliert.</small></div>
+        <input type="number" data-k="llm_temperature" min="0" max="1" step="0.1">
+      </div>
+      <div class="row">
+        <div class="l"><b>Cleanup ab Wortanzahl</b><small>Kürzere Diktate bleiben roh (schneller).</small></div>
+        <input type="number" data-k="min_words_cleanup" min="0" max="50" step="1">
+      </div>
+      <div class="row col">
+        <div class="l"><b>Whisper-Kontext</b><small>Freitext als Stilvorlage, z. B. „Gespräch über Softwareentwicklung auf Deutsch und Englisch.“</small></div>
+        <input type="text" class="wide" data-k="whisper_prompt" spellcheck="false">
+      </div>
+    </div>
+    <div class="card">
+      <h2>Aufnahme</h2>
+      <div class="row">
+        <div class="l"><b>Stille am Rand kürzen</b><small>Reduziert Halluzinationen und Upload-Größe.</small></div>
+        <label class="switch"><input type="checkbox" data-k="trim_silence"><i></i></label>
+      </div>
+      <div class="row">
+        <div class="l"><b>Stille-Schwelle</b><small>Aufnahmen darunter werden verworfen.</small></div>
+        <input type="number" data-k="silence_threshold" min="0" max="0.2" step="0.005">
+      </div>
+      <div class="row">
+        <div class="l"><b>Maximale Länge (Sekunden)</b></div>
+        <input type="number" data-k="max_seconds" min="5" max="1800" step="5">
+      </div>
+      <div class="row">
+        <div class="l"><b>Verlauf-Einträge</b></div>
+        <input type="number" data-k="history_limit" min="1" max="1000" step="10">
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script src="mascot.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
