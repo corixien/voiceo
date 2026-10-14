@@ -12,10 +12,8 @@ Voice dictation for Linux powered by Groq. Hold a hotkey, speak, text appears at
 
 ```bash
 sudo dnf install webkit2gtk4.1-devel gtk3-devel alsa-lib-devel libappindicator-gtk3-devel librsvg2-devel openssl-devel wl-clipboard
-sudo usermod -aG input $USER          # global hotkey, then re-login
-sudo bash scripts/setup-linux.sh      # auto-paste (uinput)
 npm install
 npm run dev
 ```
 
-Get a free API key at console.groq.com and paste it in Settings.
+On first start Voiceo asks once (polkit password prompt) to grant access to the keyboard and `/dev/uinput` via a udev rule. No re-login needed. Get a free API key at console.groq.com and paste it in Settings.

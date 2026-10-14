@@ -114,13 +114,21 @@ async function refreshStatus() {
     [s.api_key, "Groq API-Key", s.api_key ? "Gesetzt" : "Fehlt. Oben eintragen."],
     [s.keyboards > 0, "Globaler Hotkey", s.keyboards > 0
       ? `${s.keyboards} Tastatur(en) erkannt`
-      : "Kein Zugriff auf /dev/input. Benutzer zur Gruppe 'input' hinzufügen und neu anmelden."],
+      : "Kein Zugriff auf die Tastatur. Einmalige Einrichtung nötig."],
     [s.wl_copy, "Zwischenablage (wl-copy)", s.wl_copy ? "Bereit" : "Paket wl-clipboard installieren."],
-    [s.uinput, "Einfügen (uinput)", s.uinput ? "Bereit" : "Kein Zugriff auf /dev/uinput. Setup-Skript ausführen:"],
+    [s.uinput, "Einfügen (uinput)", s.uinput ? "Bereit" : "Kein Zugriff auf /dev/uinput. Einmalige Einrichtung nötig."],
   ];
   $("#checks").innerHTML = checks.map(([ok, t, d], i) => `
     <div class="check"><span class="dot ${ok ? "ok" : "bad"}"></span>
-      <div><b>${t}</b><small>${d}</small>${!ok && i === 3 ? "<pre>sudo bash scripts/setup-linux.sh</pre>" : ""}</div></div>`).join("");
+      <div><b>${t}</b><small>${d}</small></div></div>`).join("")
+    + ((s.keyboards > 0 && s.uinput) ? "" : '<div class="check"><button class="btn primary" id="run-setup">Jetzt einrichten</button><small>Fragt einmal nach deinem Passwort. Kein Neustart nötig.</small></div>');
+  const rs = $("#run-setup");
+  if (rs) rs.onclick = async () => {
+    rs.disabled = true; rs.textContent = "Richte ein…";
+    try { const ok = await invoke("run_setup"); toast(ok ? "Eingerichtet" : "Noch nicht bereit, bitte erneut versuchen"); }
+    catch (e) { toast(String(e)); }
+    refreshStatus(); renderHotkey();
+  };
   const allOk = checks.every((c) => c[0]);
   $("#mini-dot").className = "dot " + (allOk ? "ok" : "bad");
   $("#mini-text").textContent = allOk ? "Bereit" : "Setup unvollständig";
@@ -159,6 +167,7 @@ $$("#nav button").forEach((b) => b.addEventListener("click", () => {
   S = await invoke("get_settings");
   bind(); renderModes(); renderHotkey(); refreshStatus();
   listen("voiceo://history", renderHistory);
+  listen("voiceo://setup", () => { refreshStatus(); renderHotkey(); });
   const logo = $("#logo");
   const loop = (t) => { drawMascot(logo, "idle", t, 0); requestAnimationFrame(loop); };
   requestAnimationFrame(loop);

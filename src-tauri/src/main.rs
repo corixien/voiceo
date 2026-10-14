@@ -5,6 +5,7 @@ mod config;
 mod groq;
 mod hotkey;
 mod output;
+mod setup;
 
 use config::{HistoryItem, Settings};
 use serde_json::json;
@@ -38,6 +39,36 @@ impl AppState {
     fn history_path(&self) -> PathBuf {
         self.dir.join("history.json")
     }
+}
+
+fn off_runtime<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    std::thread::spawn(f).join().expect("worker thread")
+}
+
+/// Starts hotkey listeners and the virtual keyboard if not yet available. Safe to call repeatedly.
+fn init_input(app: &AppHandle) -> bool {
+    let st = app.state::<AppState>();
+    if st.keyboards.load(Ordering::SeqCst) == 0 {
+        let handle = app.clone();
+        let h2 = app.clone();
+        let n = hotkey::spawn(
+            move || h2.state::<AppState>().settings.lock().unwrap().hotkey.clone(),
+            st.capture.clone(),
+            move |pressed| on_hotkey(&handle, pressed),
+        );
+        st.keyboards.store(n, Ordering::SeqCst);
+    }
+    let mut kb = st.keyboard.lock().unwrap();
+    if kb.is_none() {
+        match output::VirtualKb::new() {
+            Ok(k) => {
+                *kb = Some(k);
+                *st.keyboard_err.lock().unwrap() = None;
+            }
+            Err(e) => *st.keyboard_err.lock().unwrap() = Some(e),
+        }
+    }
+    st.keyboards.load(Ordering::SeqCst) > 0 && kb.is_some()
 }
 
 fn emit_state(app: &AppHandle, state: &str, message: Option<&str>) {
@@ -262,8 +293,22 @@ fn capture_hotkey(state: State<AppState>) -> Result<Vec<u16>, String> {
 
 #[tauri::command(async)]
 fn test_api(state: State<AppState>, key: String) -> Result<String, String> {
-    let n = groq::check_key(&state.http, key.trim())?;
+    let http = state.http.clone();
+    let key = key.trim().to_string();
+    let n = off_runtime(move || groq::check_key(&http, &key))?;
     Ok(format!("Verbunden, {n} Modelle verfuegbar"))
+}
+
+#[tauri::command(async)]
+fn run_setup(app: AppHandle) -> Result<bool, String> {
+    off_runtime(setup::run)?;
+    for _ in 0..10 {
+        std::thread::sleep(Duration::from_millis(400));
+        if init_input(&app) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[tauri::command]
@@ -324,13 +369,26 @@ fn main() {
             });
 
             let handle = app.handle().clone();
-            let h2 = handle.clone();
-            let n = hotkey::spawn(
-                move || h2.state::<AppState>().settings.lock().unwrap().hotkey.clone(),
-                capture,
-                move |pressed| on_hotkey(&handle, pressed),
-            );
-            app.state::<AppState>().keyboards.store(n, Ordering::SeqCst);
+            std::thread::spawn(move || {
+                if init_input(&handle) {
+                    return;
+                }
+                // first run: ask once for the one-time system setup (polkit prompt)
+                let marker = handle.state::<AppState>().dir.join("setup-attempted");
+                if marker.exists() {
+                    return;
+                }
+                let _ = std::fs::write(&marker, "1");
+                if setup::run().is_ok() {
+                    for _ in 0..10 {
+                        std::thread::sleep(Duration::from_millis(400));
+                        if init_input(&handle) {
+                            break;
+                        }
+                    }
+                }
+                let _ = handle.emit("voiceo://setup", ());
+            });
 
             // tray
             let show = MenuItem::with_id(app, "show", "Einstellungen", true, None::<&str>)?;
@@ -369,7 +427,8 @@ fn main() {
             test_api,
             get_history,
             clear_history,
-            system_status
+            system_status,
+            run_setup
         ])
         .run(tauri::generate_context!())
         .expect("error while running voiceo");
