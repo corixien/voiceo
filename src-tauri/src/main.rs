@@ -30,7 +30,7 @@ pub struct AppState {
     capture: hotkey::Capture,
     keyboard: Mutex<Option<output::VirtualKb>>,
     keyboard_err: Mutex<Option<String>>,
-    keyboards: AtomicUsize,
+    keyboards: Arc<AtomicUsize>,
     history: Mutex<Vec<HistoryItem>>,
     learned: Mutex<Vec<Learned>>,
     last_text: Mutex<String>,
@@ -56,13 +56,16 @@ fn off_runtime<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
 /// Starts hotkey listeners and the virtual keyboard if not yet available. Safe to call repeatedly.
 fn init_input(app: &AppHandle) -> bool {
     let st = app.state::<AppState>();
-    if st.keyboards.load(Ordering::SeqCst) == 0 {
+    {
         let handle = app.clone();
         let h2 = app.clone();
-        let n = hotkey::spawn(
+        hotkey::spawn(
             move || {
                 let s = h2.state::<AppState>();
                 let s = s.settings.lock().unwrap();
+                if let Ok(v) = std::env::var("VOICEO_TEST_HOTKEY") {
+                    return vec![v.split(',').filter_map(|x| x.parse().ok()).collect(), vec![]];
+                }
                 vec![s.hotkey.clone(), s.learn_hotkey.clone()]
             },
             st.capture.clone(),
@@ -74,8 +77,8 @@ fn init_input(app: &AppHandle) -> bool {
                     std::thread::spawn(move || learn_from_selection(&h));
                 }
             },
+            st.keyboards.clone(),
         );
-        st.keyboards.store(n, Ordering::SeqCst);
     }
     let mut kb = st.keyboard.lock().unwrap();
     if kb.is_none() {
@@ -95,16 +98,39 @@ fn emit_state(app: &AppHandle, state: &str, message: Option<&str>) {
 }
 
 fn show_overlay(app: &AppHandle) {
-    let Some(w) = app.get_webview_window("overlay") else { return };
-    if let Ok(Some(m)) = w.primary_monitor() {
+    let Some(w) = app.get_webview_window("overlay") else {
+        eprintln!("[voiceo] overlay window missing");
+        return;
+    };
+    let _ = w.set_size(tauri::LogicalSize::new(264.0, 64.0));
+    let monitor = w
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| w.current_monitor().ok().flatten())
+        .or_else(|| w.available_monitors().ok().and_then(|v| v.into_iter().next()));
+    if let Some(m) = monitor {
         let sf = m.scale_factor();
+        eprintln!("[voiceo] monitor pos={:?} size={:?} sf={sf}", m.position(), m.size());
         let (mw, mh) = (m.size().width as f64, m.size().height as f64);
         let (ow, oh) = (264.0 * sf, 64.0 * sf);
         let x = m.position().x as f64 + (mw - ow) / 2.0;
         let y = m.position().y as f64 + mh - oh - 72.0 * sf;
         let _ = w.set_position(PhysicalPosition::new(x as i32, y as i32));
     }
-    let _ = w.show();
+    let r = w.show();
+    eprintln!("[voiceo] overlay show -> {r:?} visible={:?} pos={:?} size={:?}", w.is_visible(), w.outer_position(), w.outer_size());
+}
+
+/// KWin hands focus to the overlay when it is shown. Hide it and give the previously active
+/// window time to regain focus before text is pasted.
+fn release_focus(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("overlay") {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
 }
 
 fn hide_overlay_later(app: &AppHandle, ms: u64) {
@@ -136,6 +162,7 @@ fn start_recording(app: &AppHandle) {
     }
     match audio::start(app.clone(), s.max_seconds) {
         Ok(rec) => {
+            eprintln!("[voiceo] recording started");
             *st.recorder.lock().unwrap() = Some(rec);
             if s.overlay {
                 show_overlay(app);
@@ -239,6 +266,14 @@ fn run_pipeline(
     let st = app.state::<AppState>();
     let s = st.settings.lock().unwrap().clone();
 
+    // debug hook: skip STT/cleanup, deliver canned text
+    if let Ok(t) = std::env::var("VOICEO_FAKE_TEXT") {
+        release_focus(app);
+        let mut kb = st.keyboard.lock().unwrap();
+        let w = output::deliver(&s, &mut kb, &t)?;
+        eprintln!("[voiceo] fake deliver warn={w:?}");
+        return Ok(Some((t.clone(), t, w)));
+    }
     let mut pcm = audio::resample(&samples, rate);
     if audio::peak(&pcm) < s.silence_threshold {
         return Ok(None);
@@ -275,12 +310,14 @@ fn run_pipeline(
     text = learn::apply(&text, &learned);
     *st.last_text.lock().unwrap() = text.clone();
 
+    release_focus(app);
     let mut kb = st.keyboard.lock().unwrap();
     let deliver_warn = output::deliver(&s, &mut kb, &text)?;
     Ok(Some((raw, text, deliver_warn.or(warn))))
 }
 
 fn on_hotkey(app: &AppHandle, pressed: bool) {
+    eprintln!("[voiceo] hotkey pressed={pressed}");
     let st = app.state::<AppState>();
     let mode = st.settings.lock().unwrap().hotkey_mode.clone();
     let recording = st.recorder.lock().unwrap().is_some();
@@ -463,7 +500,7 @@ fn main() {
                 capture: capture.clone(),
                 keyboard: Mutex::new(kb),
                 keyboard_err: Mutex::new(kb_err),
-                keyboards: AtomicUsize::new(0),
+                keyboards: Arc::new(AtomicUsize::new(0)),
                 history: Mutex::new(history),
                 learned: Mutex::new(learned),
                 last_text: Mutex::new(String::new()),
@@ -493,16 +530,14 @@ fn main() {
             });
 
             // Overlay must never take focus (otherwise the paste lands in the wrong window).
-            // X11 override-redirect: the window manager never manages or focuses it.
             if let Some(w) = app.get_webview_window("overlay") {
                 if let Ok(gw) = w.gtk_window() {
-                    use gtk::prelude::{GtkWindowExt, WidgetExt};
+                    use gtk::prelude::GtkWindowExt;
                     gw.set_accept_focus(false);
                     gw.set_focus_on_map(false);
-                    gw.realize();
-                    if let Some(gdk_win) = gw.window() {
-                        gdk_win.set_override_redirect(true);
-                    }
+                    gw.set_type_hint(gtk::gdk::WindowTypeHint::Dock);
+                    gw.set_skip_taskbar_hint(true);
+                    gw.set_skip_pager_hint(true);
                 }
             }
 

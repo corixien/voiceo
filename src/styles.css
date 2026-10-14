@@ -118,3 +118,9 @@ pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; 
 #toast { position: fixed; bottom: 22px; right: 26px; background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 20px; font-size: 13px; opacity: 0; transform: translateY(6px); transition: all .2s; pointer-events: none; }
 #toast.on { opacity: 1; transform: none; }
 .msg-ok { color: var(--green); } .msg-bad { color: var(--red); }
+
+.presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.presets button { all: unset; cursor: pointer; font-size: 12.5px; padding: 3px 10px; border-radius: 14px; border: 1px solid var(--line); color: var(--muted); }
+.presets button:hover { border-color: var(--orange); color: var(--orange); }
+.presets button.on { background: var(--orange-soft); border-color: var(--orange); color: var(--orange); }
+.warn { color: var(--red); font-size: 12.5px; margin-top: 6px; }

@@ -79,7 +79,28 @@ function renderModes() {
 }
 
 // ---------- hotkey ----------
+const PRESETS = [[97], [100], [127], [119], [70]];
+const RISKY = (codes) => codes.includes(125) || codes.includes(126) || (codes.includes(56) && codes.includes(57)) || (codes.includes(29) && codes.includes(56) && codes.length > 2);
+async function renderPresets() {
+  const box = $("#hk-presets");
+  box.innerHTML = "";
+  for (const codes of PRESETS) {
+    const [label] = await invoke("key_labels", { codes });
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.className = JSON.stringify(S.hotkey) === JSON.stringify(codes) ? "on" : "";
+    b.onclick = () => { S.hotkey = codes; queueSave(); renderHotkey(); };
+    box.appendChild(b);
+  }
+  if (RISKY(S.hotkey || [])) {
+    const w = document.createElement("div");
+    w.className = "warn";
+    w.textContent = "Diese Kombination kollidiert wahrscheinlich mit anderen Programmen. Wähle eine einzelne Taste.";
+    box.appendChild(w);
+  }
+}
 async function renderHotkey() {
+  renderPresets();
   for (const [key, id] of [["hotkey", "#hk-keys"], ["learn_hotkey", "#lk-keys"]]) {
     const labels = await invoke("key_labels", { codes: S[key] || [] });
     $(id).innerHTML = labels.map((l) => `<kbd>${l}</kbd>`).join("") || "<kbd>aus</kbd>";

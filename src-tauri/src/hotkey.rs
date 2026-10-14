@@ -1,7 +1,8 @@
 //! Global hotkey via evdev (works on Wayland; needs membership in the `input` group).
 use evdev::{Device, EventType, Key};
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
@@ -24,32 +25,68 @@ pub fn keyboards() -> Vec<(std::path::PathBuf, Device)> {
         .collect()
 }
 
+/// Starts (once) a rescanning listener: new keyboards are picked up every 2 s.
 /// `get_hotkeys` is re-read on every event so settings changes apply instantly.
 /// `on_event(idx, true)` = hotkey `idx` pressed, `false` = released.
 pub fn spawn(
     get_hotkeys: impl Fn() -> Vec<Vec<u16>> + Send + Sync + 'static,
     capture: Capture,
     on_event: impl Fn(usize, bool) + Send + Sync + 'static,
-) -> usize {
-    let devices = keyboards();
-    let count = devices.len();
+    count: Arc<AtomicUsize>,
+) {
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
     let shared = Arc::new(Shared {
         pressed: Mutex::new(HashSet::new()),
         captured: Mutex::new(HashSet::new()),
         active: [AtomicBool::new(false), AtomicBool::new(false)],
     });
-    let get_hotkeys = Arc::new(get_hotkeys);
-    let on_event = Arc::new(on_event);
+    let get_hotkeys: Arc<dyn Fn() -> Vec<Vec<u16>> + Send + Sync> = Arc::new(get_hotkeys);
+    let on_event: Arc<dyn Fn(usize, bool) + Send + Sync> = Arc::new(on_event);
+    let known: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
 
-    for (_, mut dev) in devices {
-        let shared = shared.clone();
-        let capture = capture.clone();
-        let get_hotkeys = get_hotkeys.clone();
-        let on_event = on_event.clone();
-        std::thread::spawn(move || loop {
+    std::thread::spawn(move || loop {
+        for (path, dev) in keyboards() {
+            if !known.lock().unwrap().insert(path.clone()) {
+                continue;
+            }
+            count.fetch_add(1, Ordering::SeqCst);
+            read_device(
+                path,
+                dev,
+                shared.clone(),
+                capture.clone(),
+                get_hotkeys.clone(),
+                on_event.clone(),
+                known.clone(),
+                count.clone(),
+            );
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn read_device(
+    path: PathBuf,
+    mut dev: Device,
+    shared: Arc<Shared>,
+    capture: Capture,
+    get_hotkeys: Arc<dyn Fn() -> Vec<Vec<u16>> + Send + Sync>,
+    on_event: Arc<dyn Fn(usize, bool) + Send + Sync>,
+    known: Arc<Mutex<HashSet<PathBuf>>>,
+    count: Arc<AtomicUsize>,
+) {
+    std::thread::spawn(move || {
+        'outer: loop {
             let events = match dev.fetch_events() {
                 Ok(e) => e,
-                Err(_) => return, // device unplugged
+                Err(e) => {
+                    eprintln!("[voiceo] device {} read error: {e}", path.display());
+                    break 'outer; // device unplugged
+                }
             };
             for ev in events {
                 if ev.event_type() != EventType::KEY || ev.value() == 2 {
@@ -57,6 +94,9 @@ pub fn spawn(
                 }
                 let code = ev.code();
                 let down = ev.value() == 1;
+                if std::env::var_os("VOICEO_DEBUG_KEYS").is_some() {
+                    eprintln!("[voiceo] key {code} down={down} on {}", path.display());
+                }
                 let mut pressed = shared.pressed.lock().unwrap();
                 if down {
                     pressed.insert(code);
@@ -94,9 +134,10 @@ pub fn spawn(
                     }
                 }
             }
-        });
-    }
-    count
+        }
+        known.lock().unwrap().remove(&path);
+        count.fetch_sub(1, Ordering::SeqCst);
+    });
 }
 
 pub fn wait_capture(capture: &Capture, timeout: Duration) -> Result<Vec<u16>, String> {
