@@ -55,6 +55,14 @@
         </div>
       </div>
       <div class="row">
+        <div class="l"><b>Lern-Taste</b><small>Korrigierten Text markieren, dann diese Taste drücken. Voiceo merkt sich die geänderten Wörter. Leer = aus.</small></div>
+        <div style="display:flex;gap:10px;align-items:center" id="lk-box">
+          <div class="keys" id="lk-keys"></div>
+          <button class="btn" id="lk-change">Ändern</button>
+          <button class="btn small" id="lk-clear">Aus</button>
+        </div>
+      </div>
+      <div class="row">
         <div class="l"><b>Sprache</b><small>Automatisch erkennt auch Deutsch/Englisch-Mix.</small></div>
         <select data-k="language">
           <option value="auto">Automatisch</option>
@@ -131,6 +139,19 @@
     <h1>Wörterbuch</h1>
     <p class="sub">Namen, Marken und Fachbegriffe, die richtig geschrieben werden sollen.</p>
     <div class="card">
+      <h2>Gelernte Korrekturen</h2>
+      <div id="learned"></div>
+      <div class="row">
+        <div style="display:flex;gap:8px;align-items:center;width:100%">
+          <input type="text" id="l-from" placeholder="falsch, z. B. clod" style="flex:1;width:auto">
+          <span class="hint">→</span>
+          <input type="text" id="l-to" placeholder="richtig, z. B. Claude" style="flex:1;width:auto">
+          <button class="btn" id="l-add">Hinzufügen</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Eigene Begriffe</h2>
       <div class="row col">
         <div class="l"><b>Ein Begriff pro Zeile</b><small>Fließt in Whisper und in die Nachbearbeitung ein.</small></div>
         <textarea data-dict spellcheck="false" placeholder="Voiceo&#10;Groq&#10;Kubernetes"></textarea>
@@ -158,9 +179,9 @@
         <datalist id="stt-models"><option>whisper-large-v3</option><option>whisper-large-v3-turbo</option></datalist>
       </div>
       <div class="row">
-        <div class="l"><b>Nachbearbeitung</b><small>Chat-Modell für den Cleanup.</small></div>
+        <div class="l"><b>Nachbearbeitung</b><small>Chat-Modell für den Cleanup. Fehlt es, wählt Voiceo automatisch ein anderes.</small></div>
         <input type="text" data-k="llm_model" list="llm-models" spellcheck="false">
-        <datalist id="llm-models"><option>llama-3.3-70b-versatile</option><option>llama-3.1-8b-instant</option></datalist>
+        <datalist id="llm-models"><option>openai/gpt-oss-120b</option><option>qwen/qwen3.8-27b</option><option>openai/gpt-oss-20b</option></datalist>
       </div>
     </div>
     <div class="card">

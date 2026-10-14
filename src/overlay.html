@@ -53,6 +53,7 @@
     viz.classList.toggle("hide", !wave);
     label.classList.toggle("hide", wave);
     if (s === "done") setLabel("Eingefügt", "");
+    else if (s === "learned") setLabel(msg || "Gelernt", "");
     else if (s === "error") setLabel(msg || "Fehler", "err");
     pill.classList.toggle("on", s !== "idle");
   }

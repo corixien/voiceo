@@ -10,7 +10,7 @@ pub struct VirtualKb(VirtualDevice);
 impl VirtualKb {
     pub fn new() -> Result<Self, String> {
         let mut keys = AttributeSet::<Key>::new();
-        for k in [Key::KEY_LEFTCTRL, Key::KEY_LEFTSHIFT, Key::KEY_V, Key::KEY_INSERT] {
+        for k in [Key::KEY_LEFTCTRL, Key::KEY_LEFTSHIFT, Key::KEY_V, Key::KEY_C] {
             keys.insert(k);
         }
         let dev = VirtualDeviceBuilder::new()
@@ -29,6 +29,13 @@ impl VirtualKb {
             .map_err(|e| e.to_string())?;
         std::thread::sleep(Duration::from_millis(12));
         Ok(())
+    }
+
+    pub fn copy(&mut self) -> Result<(), String> {
+        self.key(Key::KEY_LEFTCTRL, 1)?;
+        self.key(Key::KEY_C, 1)?;
+        self.key(Key::KEY_C, 0)?;
+        self.key(Key::KEY_LEFTCTRL, 0)
     }
 
     pub fn paste(&mut self, shift: bool) -> Result<(), String> {
@@ -102,4 +109,12 @@ pub fn deliver(s: &Settings, kb: &mut Option<VirtualKb>, text: &str) -> Result<O
         }
     }
     Ok(warn)
+}
+
+pub fn wl_paste() -> Result<String, String> {
+    let out = Command::new("wl-paste")
+        .arg("-n")
+        .output()
+        .map_err(|e| format!("wl-paste fehlt: {e}"))?;
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }

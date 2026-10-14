@@ -9,6 +9,8 @@ pub struct Settings {
     pub hotkey: Vec<u16>,
     /// "hold" (push-to-talk) or "toggle"
     pub hotkey_mode: String,
+    /// evdev codes: select corrected text, press this to learn word corrections (empty = off)
+    pub learn_hotkey: Vec<u16>,
     /// "auto" or ISO-639-1 code
     pub language: String,
     pub stt_model: String,
@@ -41,9 +43,10 @@ impl Default for Settings {
             api_key: String::new(),
             hotkey: vec![97], // KEY_RIGHTCTRL
             hotkey_mode: "hold".into(),
+            learn_hotkey: vec![],
             language: "auto".into(),
             stt_model: "whisper-large-v3".into(),
-            llm_model: "llama-3.3-70b-versatile".into(),
+            llm_model: "openai/gpt-oss-120b".into(),
             cleanup: true,
             mode: "clean".into(),
             custom_prompt: String::new(),
@@ -67,10 +70,15 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load(path: &Path) -> Self {
-        fs::read_to_string(path)
+        let mut s: Self = fs::read_to_string(path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // retired Groq models -> current default
+        if s.llm_model.starts_with("llama-") {
+            s.llm_model = Self::default().llm_model;
+        }
+        s
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {

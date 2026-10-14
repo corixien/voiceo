@@ -2,12 +2,15 @@
 
 mod audio;
 mod config;
+mod glossary;
 mod groq;
 mod hotkey;
+mod learn;
 mod output;
 mod setup;
 
 use config::{HistoryItem, Settings};
+use learn::Learned;
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -29,12 +32,17 @@ pub struct AppState {
     keyboard_err: Mutex<Option<String>>,
     keyboards: AtomicUsize,
     history: Mutex<Vec<HistoryItem>>,
+    learned: Mutex<Vec<Learned>>,
+    last_text: Mutex<String>,
     http: reqwest::blocking::Client,
 }
 
 impl AppState {
     fn settings_path(&self) -> PathBuf {
         self.dir.join("settings.json")
+    }
+    fn learned_path(&self) -> PathBuf {
+        self.dir.join("learned.json")
     }
     fn history_path(&self) -> PathBuf {
         self.dir.join("history.json")
@@ -52,9 +60,20 @@ fn init_input(app: &AppHandle) -> bool {
         let handle = app.clone();
         let h2 = app.clone();
         let n = hotkey::spawn(
-            move || h2.state::<AppState>().settings.lock().unwrap().hotkey.clone(),
+            move || {
+                let s = h2.state::<AppState>();
+                let s = s.settings.lock().unwrap();
+                vec![s.hotkey.clone(), s.learn_hotkey.clone()]
+            },
             st.capture.clone(),
-            move |pressed| on_hotkey(&handle, pressed),
+            move |idx, pressed| {
+                if idx == 0 {
+                    on_hotkey(&handle, pressed)
+                } else if !pressed {
+                    let h = handle.clone();
+                    std::thread::spawn(move || learn_from_selection(&h));
+                }
+            },
         );
         st.keyboards.store(n, Ordering::SeqCst);
     }
@@ -191,6 +210,7 @@ fn stop_recording(app: &AppHandle) {
                 hide_overlay_later(&app, 0);
             }
             Err(e) => {
+                eprintln!("pipeline error: {e}");
                 st.busy.store(false, Ordering::SeqCst);
                 emit_state(&app, "error", Some(&e));
                 hide_overlay_later(&app, 3000);
@@ -227,7 +247,11 @@ fn run_pipeline(
         pcm = audio::trim_silence(&pcm);
     }
     let wav = audio::to_wav(&pcm)?;
-    let raw = groq::transcribe(&st.http, &s, wav)?;
+    let learned = st.learned.lock().unwrap().clone();
+    let mut terms: Vec<String> = s.dictionary.clone();
+    terms.extend(learned.iter().map(|l| l.to.clone()));
+    terms.dedup();
+    let raw = groq::transcribe(&st.http, &s, wav, &terms)?;
     let lower = raw.to_lowercase();
     if raw.is_empty() || (raw.chars().count() < 90 && HALLUCINATIONS.iter().any(|h| lower.contains(h))) {
         return Ok(None);
@@ -237,12 +261,19 @@ fn run_pipeline(
     let mut text = raw.clone();
     let mut warn = None;
     if s.cleanup && s.mode != "raw" && words >= s.min_words_cleanup {
-        match groq::cleanup(&st.http, &s, &raw) {
+        let hints = glossary::candidates(&raw, &terms);
+        match groq::cleanup(&st.http, &s, &raw, &hints, &terms) {
             Ok(Some(t)) => text = t,
             Ok(None) => {}
-            Err(e) => warn = Some(format!("Cleanup fehlgeschlagen, Rohtext genutzt ({e})")),
+            Err(e) => {
+                eprintln!("cleanup error: {e}");
+                warn = Some(format!("Cleanup fehlgeschlagen: {e}"));
+            }
         }
     }
+
+    text = learn::apply(&text, &learned);
+    *st.last_text.lock().unwrap() = text.clone();
 
     let mut kb = st.keyboard.lock().unwrap();
     let deliver_warn = output::deliver(&s, &mut kb, &text)?;
@@ -267,7 +298,75 @@ fn on_hotkey(app: &AppHandle, pressed: bool) {
     }
 }
 
+fn flash(app: &AppHandle, state: &str, msg: &str, ms: u64) {
+    if app.state::<AppState>().settings.lock().unwrap().overlay {
+        show_overlay(app);
+    }
+    emit_state(app, state, Some(msg));
+    hide_overlay_later(app, ms);
+}
+
+/// Copies the current selection (the user's corrected text), diffs it against the last dictation
+/// and stores word-level corrections.
+fn learn_from_selection(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    let last = st.last_text.lock().unwrap().clone();
+    if last.is_empty() {
+        return flash(app, "error", "Noch kein Diktat zum Lernen", 2000);
+    }
+    let copied = {
+        let mut kb = st.keyboard.lock().unwrap();
+        match kb.as_mut() {
+            Some(k) => k.copy(),
+            None => Err("uinput fehlt".into()),
+        }
+    };
+    if let Err(e) = copied {
+        return flash(app, "error", &e, 2400);
+    }
+    std::thread::sleep(Duration::from_millis(220));
+    let corrected = match output::wl_paste() {
+        Ok(t) => t.trim().to_string(),
+        Err(e) => return flash(app, "error", &e, 2400),
+    };
+    let pairs = learn::diff_pairs(&last, &corrected);
+    if pairs.is_empty() {
+        return flash(app, "error", "Keine Korrektur erkannt. Text markieren, dann Lern-Taste", 2600);
+    }
+    let mut learned = st.learned.lock().unwrap();
+    for (from, to) in &pairs {
+        learn::add(&mut learned, from, to);
+    }
+    learn::save(&st.learned_path(), &learned);
+    *st.last_text.lock().unwrap() = corrected;
+    drop(learned);
+    let _ = app.emit("voiceo://learned", ());
+    let (f, t) = &pairs[0];
+    flash(app, "learned", &format!("Gelernt: {f} → {t}"), 2000);
+}
+
 // ---------- commands ----------
+
+#[tauri::command]
+fn get_learned(state: State<AppState>) -> Vec<Learned> {
+    state.learned.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn add_learned(state: State<AppState>, from: String, to: String) -> Vec<Learned> {
+    let mut l = state.learned.lock().unwrap();
+    learn::add(&mut l, from.trim(), to.trim());
+    learn::save(&state.learned_path(), &l);
+    l.clone()
+}
+
+#[tauri::command]
+fn delete_learned(state: State<AppState>, from: String) -> Vec<Learned> {
+    let mut l = state.learned.lock().unwrap();
+    l.retain(|x| x.from != from);
+    learn::save(&state.learned_path(), &l);
+    l.clone()
+}
 
 #[tauri::command]
 fn get_settings(state: State<AppState>) -> Settings {
@@ -355,6 +454,7 @@ fn main() {
                 Err(e) => (None, Some(e)),
             };
             let capture: hotkey::Capture = Arc::new(Mutex::new(None));
+            let learned = learn::load(&dir.join("learned.json"));
             app.manage(AppState {
                 settings: Mutex::new(settings),
                 dir,
@@ -365,6 +465,8 @@ fn main() {
                 keyboard_err: Mutex::new(kb_err),
                 keyboards: AtomicUsize::new(0),
                 history: Mutex::new(history),
+                learned: Mutex::new(learned),
+                last_text: Mutex::new(String::new()),
                 http: groq::client(),
             });
 
@@ -389,6 +491,17 @@ fn main() {
                 }
                 let _ = handle.emit("voiceo://setup", ());
             });
+
+            // overlay must never take keyboard focus (otherwise the paste lands in the wrong window)
+            if let Some(w) = app.get_webview_window("overlay") {
+                if let Ok(gw) = w.gtk_window() {
+                    use gtk::prelude::GtkWindowExt;
+                    gw.set_accept_focus(false);
+                    gw.set_focus_on_map(false);
+                    gw.set_type_hint(gtk::gdk::WindowTypeHint::Notification);
+                    gw.set_skip_taskbar_hint(true);
+                }
+            }
 
             // tray
             let show = MenuItem::with_id(app, "show", "Einstellungen", true, None::<&str>)?;
@@ -428,7 +541,10 @@ fn main() {
             get_history,
             clear_history,
             system_status,
-            run_setup
+            run_setup,
+            get_learned,
+            add_learned,
+            delete_learned
         ])
         .run(tauri::generate_context!())
         .expect("error while running voiceo");

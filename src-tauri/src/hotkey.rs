@@ -10,7 +10,7 @@ pub type Capture = Arc<Mutex<Option<mpsc::Sender<Vec<u16>>>>>;
 struct Shared {
     pressed: Mutex<HashSet<u16>>,
     captured: Mutex<HashSet<u16>>,
-    active: AtomicBool,
+    active: [AtomicBool; 2],
 }
 
 pub fn keyboards() -> Vec<(std::path::PathBuf, Device)> {
@@ -24,27 +24,27 @@ pub fn keyboards() -> Vec<(std::path::PathBuf, Device)> {
         .collect()
 }
 
-/// `get_hotkey` is re-read on every event so settings changes apply instantly.
-/// `on_event(true)` = hotkey pressed, `on_event(false)` = released.
+/// `get_hotkeys` is re-read on every event so settings changes apply instantly.
+/// `on_event(idx, true)` = hotkey `idx` pressed, `false` = released.
 pub fn spawn(
-    get_hotkey: impl Fn() -> Vec<u16> + Send + Sync + 'static,
+    get_hotkeys: impl Fn() -> Vec<Vec<u16>> + Send + Sync + 'static,
     capture: Capture,
-    on_event: impl Fn(bool) + Send + Sync + 'static,
+    on_event: impl Fn(usize, bool) + Send + Sync + 'static,
 ) -> usize {
     let devices = keyboards();
     let count = devices.len();
     let shared = Arc::new(Shared {
         pressed: Mutex::new(HashSet::new()),
         captured: Mutex::new(HashSet::new()),
-        active: AtomicBool::new(false),
+        active: [AtomicBool::new(false), AtomicBool::new(false)],
     });
-    let get_hotkey = Arc::new(get_hotkey);
+    let get_hotkeys = Arc::new(get_hotkeys);
     let on_event = Arc::new(on_event);
 
     for (_, mut dev) in devices {
         let shared = shared.clone();
         let capture = capture.clone();
-        let get_hotkey = get_hotkey.clone();
+        let get_hotkeys = get_hotkeys.clone();
         let on_event = on_event.clone();
         std::thread::spawn(move || loop {
             let events = match dev.fetch_events() {
@@ -77,19 +77,21 @@ pub fn spawn(
                     continue;
                 }
 
-                let hotkey = get_hotkey();
-                if hotkey.is_empty() {
-                    continue;
-                }
-                let all_down = hotkey.iter().all(|k| pressed.contains(k));
+                let hotkeys = get_hotkeys();
+                let states: Vec<bool> = hotkeys
+                    .iter()
+                    .map(|hk| !hk.is_empty() && hk.iter().all(|k| pressed.contains(k)))
+                    .collect();
                 drop(pressed);
-                let was_active = shared.active.load(Ordering::SeqCst);
-                if all_down && !was_active {
-                    shared.active.store(true, Ordering::SeqCst);
-                    on_event(true);
-                } else if !all_down && was_active {
-                    shared.active.store(false, Ordering::SeqCst);
-                    on_event(false);
+                for (idx, all_down) in states.into_iter().enumerate().take(2) {
+                    let was_active = shared.active[idx].load(Ordering::SeqCst);
+                    if all_down && !was_active {
+                        shared.active[idx].store(true, Ordering::SeqCst);
+                        on_event(idx, true);
+                    } else if !all_down && was_active {
+                        shared.active[idx].store(false, Ordering::SeqCst);
+                        on_event(idx, false);
+                    }
                 }
             }
         });

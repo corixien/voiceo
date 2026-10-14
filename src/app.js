@@ -80,21 +80,48 @@ function renderModes() {
 
 // ---------- hotkey ----------
 async function renderHotkey() {
-  const labels = await invoke("key_labels", { codes: S.hotkey });
-  $("#hk-keys").innerHTML = labels.map((l) => `<kbd>${l}</kbd>`).join("") || "<kbd>—</kbd>";
+  for (const [key, id] of [["hotkey", "#hk-keys"], ["learn_hotkey", "#lk-keys"]]) {
+    const labels = await invoke("key_labels", { codes: S[key] || [] });
+    $(id).innerHTML = labels.map((l) => `<kbd>${l}</kbd>`).join("") || "<kbd>aus</kbd>";
+  }
 }
-$("#hk-change").onclick = async () => {
-  const box = $("#hk-box");
-  box.classList.add("capturing");
-  $("#hk-keys").innerHTML = "<kbd>Taste drücken…</kbd>";
-  $("#hk-change").disabled = true;
-  try {
-    const codes = await invoke("capture_hotkey");
-    if (codes.length) { S.hotkey = codes; queueSave(); }
-  } catch (e) { toast(String(e)); }
-  box.classList.remove("capturing");
-  $("#hk-change").disabled = false;
-  renderHotkey();
+function wireCapture(btn, box, keys, field) {
+  $(btn).onclick = async () => {
+    $(box).classList.add("capturing");
+    $(keys).innerHTML = "<kbd>Taste drücken…</kbd>";
+    $(btn).disabled = true;
+    try {
+      const codes = await invoke("capture_hotkey");
+      if (codes.length) { S[field] = codes; queueSave(); }
+    } catch (e) { toast(String(e)); }
+    $(box).classList.remove("capturing");
+    $(btn).disabled = false;
+    renderHotkey();
+  };
+}
+wireCapture("#hk-change", "#hk-box", "#hk-keys", "hotkey");
+wireCapture("#lk-change", "#lk-box", "#lk-keys", "learn_hotkey");
+$("#lk-clear").onclick = () => { S.learn_hotkey = []; queueSave(); renderHotkey(); };
+
+// ---------- learned corrections ----------
+function renderLearned(items) {
+  const box = $("#learned");
+  if (!items.length) { box.innerHTML = '<div class="empty">Noch nichts gelernt.</div>'; return; }
+  box.innerHTML = "";
+  items.forEach((it) => {
+    const r = document.createElement("div");
+    r.className = "row";
+    r.innerHTML = `<div class="l"><b></b><small>${it.count}× gelernt</small></div><button class="btn small">Entfernen</button>`;
+    $("b", r).textContent = `${it.from}  →  ${it.to}`;
+    $("button", r).onclick = async () => renderLearned(await invoke("delete_learned", { from: it.from }));
+    box.appendChild(r);
+  });
+}
+$("#l-add").onclick = async () => {
+  const from = $("#l-from").value.trim(), to = $("#l-to").value.trim();
+  if (!from || !to) return;
+  renderLearned(await invoke("add_learned", { from, to }));
+  $("#l-from").value = ""; $("#l-to").value = "";
 };
 
 // ---------- api test ----------
@@ -167,6 +194,8 @@ $$("#nav button").forEach((b) => b.addEventListener("click", () => {
   S = await invoke("get_settings");
   bind(); renderModes(); renderHotkey(); refreshStatus();
   listen("voiceo://history", renderHistory);
+  listen("voiceo://learned", async () => renderLearned(await invoke("get_learned")));
+  renderLearned(await invoke("get_learned"));
   listen("voiceo://setup", () => { refreshStatus(); renderHotkey(); });
   const logo = $("#logo");
   const loop = (t) => { drawMascot(logo, "idle", t, 0); requestAnimationFrame(loop); };
