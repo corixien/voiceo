@@ -492,14 +492,17 @@ fn main() {
                 let _ = handle.emit("voiceo://setup", ());
             });
 
-            // overlay must never take keyboard focus (otherwise the paste lands in the wrong window)
+            // Overlay must never take focus (otherwise the paste lands in the wrong window).
+            // X11 override-redirect: the window manager never manages or focuses it.
             if let Some(w) = app.get_webview_window("overlay") {
                 if let Ok(gw) = w.gtk_window() {
-                    use gtk::prelude::GtkWindowExt;
+                    use gtk::prelude::{GtkWindowExt, WidgetExt};
                     gw.set_accept_focus(false);
                     gw.set_focus_on_map(false);
-                    gw.set_type_hint(gtk::gdk::WindowTypeHint::Notification);
-                    gw.set_skip_taskbar_hint(true);
+                    gw.realize();
+                    if let Some(gdk_win) = gw.window() {
+                        gdk_win.set_override_redirect(true);
+                    }
                 }
             }
 
