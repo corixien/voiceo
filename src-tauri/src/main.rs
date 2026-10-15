@@ -8,6 +8,7 @@ mod hotkey;
 mod learn;
 mod output;
 mod setup;
+mod watch;
 
 use config::{HistoryItem, Settings};
 use learn::Learned;
@@ -18,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 const MIN_RECORDING_MS: u128 = 300;
 
@@ -34,6 +35,7 @@ pub struct AppState {
     history: Mutex<Vec<HistoryItem>>,
     learned: Mutex<Vec<Learned>>,
     last_text: Mutex<String>,
+    watcher: Mutex<Option<watch::Watcher>>,
     http: reqwest::blocking::Client,
 }
 
@@ -63,9 +65,6 @@ fn init_input(app: &AppHandle) -> bool {
             move || {
                 let s = h2.state::<AppState>();
                 let s = s.settings.lock().unwrap();
-                if let Ok(v) = std::env::var("VOICEO_TEST_HOTKEY") {
-                    return vec![v.split(',').filter_map(|x| x.parse().ok()).collect(), vec![]];
-                }
                 vec![s.hotkey.clone(), s.learn_hotkey.clone()]
             },
             st.capture.clone(),
@@ -75,6 +74,17 @@ fn init_input(app: &AppHandle) -> bool {
                 } else if !pressed {
                     let h = handle.clone();
                     std::thread::spawn(move || learn_from_selection(&h));
+                }
+            },
+            {
+                let h = app.clone();
+                move |code| {
+                    // Enter = message/URL submitted: finalize what the user did to the dictated text
+                    if code == 28 || code == 96 {
+                        if let Some(w) = h.state::<AppState>().watcher.lock().unwrap().as_ref() {
+                            w.submit();
+                        }
+                    }
                 }
             },
             st.keyboards.clone(),
@@ -98,47 +108,25 @@ fn emit_state(app: &AppHandle, state: &str, message: Option<&str>) {
 }
 
 fn show_overlay(app: &AppHandle) {
-    let Some(w) = app.get_webview_window("overlay") else {
-        eprintln!("[voiceo] overlay window missing");
-        return;
-    };
-    let _ = w.set_size(tauri::LogicalSize::new(264.0, 64.0));
-    let monitor = w
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| w.current_monitor().ok().flatten())
-        .or_else(|| w.available_monitors().ok().and_then(|v| v.into_iter().next()));
-    if let Some(m) = monitor {
-        let sf = m.scale_factor();
-        eprintln!("[voiceo] monitor pos={:?} size={:?} sf={sf}", m.position(), m.size());
-        let (mw, mh) = (m.size().width as f64, m.size().height as f64);
-        let (ow, oh) = (264.0 * sf, 64.0 * sf);
-        let x = m.position().x as f64 + (mw - ow) / 2.0;
-        let y = m.position().y as f64 + mh - oh - 72.0 * sf;
-        let _ = w.set_position(PhysicalPosition::new(x as i32, y as i32));
-    }
-    let r = w.show();
-    eprintln!("[voiceo] overlay show -> {r:?} visible={:?} pos={:?} size={:?}", w.is_visible(), w.outer_position(), w.outer_size());
-}
-
-/// KWin hands focus to the overlay when it is shown. Hide it and give the previously active
-/// window time to regain focus before text is pasted.
-fn release_focus(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("overlay") {
-        if w.is_visible().unwrap_or(false) {
-            let _ = w.hide();
-            std::thread::sleep(Duration::from_millis(250));
-        }
+        let r = w.show();
+        let _ = r;
     }
 }
 
+/// Plays the exit animation (state "idle"), then hides the overlay window.
 fn hide_overlay_later(app: &AppHandle, ms: u64) {
     let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(ms));
         let st = app.state::<AppState>();
-        if !st.busy.load(Ordering::SeqCst) && st.recorder.lock().unwrap().is_none() {
+        let free = |st: &AppState| !st.busy.load(Ordering::SeqCst) && st.recorder.lock().unwrap().is_none();
+        if !free(&st) {
+            return;
+        }
+        emit_state(&app, "idle", None);
+        std::thread::sleep(Duration::from_millis(650));
+        if free(&st) {
             if let Some(w) = app.get_webview_window("overlay") {
                 let _ = w.hide();
             }
@@ -160,9 +148,11 @@ fn start_recording(app: &AppHandle) {
         }
         return;
     }
-    match audio::start(app.clone(), s.max_seconds) {
+    if let Some(w) = st.watcher.lock().unwrap().as_ref() {
+        w.flush();
+    }
+    match audio::start(app.clone(), s.max_seconds, s.input_device.clone()) {
         Ok(rec) => {
-            eprintln!("[voiceo] recording started");
             *st.recorder.lock().unwrap() = Some(rec);
             if s.overlay {
                 show_overlay(app);
@@ -266,20 +256,18 @@ fn run_pipeline(
     let st = app.state::<AppState>();
     let s = st.settings.lock().unwrap().clone();
 
-    // debug hook: skip STT/cleanup, deliver canned text
-    if let Ok(t) = std::env::var("VOICEO_FAKE_TEXT") {
-        release_focus(app);
-        let mut kb = st.keyboard.lock().unwrap();
-        let w = output::deliver(&s, &mut kb, &t)?;
-        eprintln!("[voiceo] fake deliver warn={w:?}");
-        return Ok(Some((t.clone(), t, w)));
-    }
     let mut pcm = audio::resample(&samples, rate);
     if audio::peak(&pcm) < s.silence_threshold {
         return Ok(None);
     }
+    if s.highpass {
+        audio::highpass(&mut pcm);
+    }
     if s.trim_silence {
         pcm = audio::trim_silence(&pcm);
+    }
+    if s.normalize {
+        audio::normalize(&mut pcm);
     }
     let wav = audio::to_wav(&pcm)?;
     let learned = st.learned.lock().unwrap().clone();
@@ -310,14 +298,18 @@ fn run_pipeline(
     text = learn::apply(&text, &learned);
     *st.last_text.lock().unwrap() = text.clone();
 
-    release_focus(app);
     let mut kb = st.keyboard.lock().unwrap();
     let deliver_warn = output::deliver(&s, &mut kb, &text)?;
+    drop(kb);
+    if s.auto_learn {
+        if let Some(w) = st.watcher.lock().unwrap().as_ref() {
+            w.track(&text);
+        }
+    }
     Ok(Some((raw, text, deliver_warn.or(warn))))
 }
 
 fn on_hotkey(app: &AppHandle, pressed: bool) {
-    eprintln!("[voiceo] hotkey pressed={pressed}");
     let st = app.state::<AppState>();
     let mode = st.settings.lock().unwrap().hotkey_mode.clone();
     let recording = st.recorder.lock().unwrap().is_some();
@@ -343,8 +335,42 @@ fn flash(app: &AppHandle, state: &str, msg: &str, ms: u64) {
     hide_overlay_later(app, ms);
 }
 
-/// Copies the current selection (the user's corrected text), diffs it against the last dictation
-/// and stores word-level corrections.
+/// Compares dictated text with the user's final version; the LLM derives dictionary entries.
+/// Returns the number of entries learned.
+fn learn_from_edit(app: &AppHandle, original: &str, corrected: &str) -> usize {
+    let st = app.state::<AppState>();
+    let s = st.settings.lock().unwrap().clone();
+    eprintln!("[voiceo] learn: original={original:?} final={corrected:?}");
+    let norm = |t: &str| t.split_whitespace().collect::<Vec<_>>().join(" ");
+    if norm(original) == norm(corrected) || s.api_key.trim().is_empty() {
+        return 0;
+    }
+    let pairs = match groq::extract_learning(&st.http, &s, original, corrected) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("learn extraction failed: {e}");
+            learn::diff_pairs(original, corrected)
+        }
+    };
+    eprintln!("[voiceo] learn pairs: {pairs:?}");
+    if pairs.is_empty() {
+        return 0;
+    }
+    {
+        let mut learned = st.learned.lock().unwrap();
+        for (from, to) in &pairs {
+            learn::add(&mut learned, from, to);
+        }
+        learn::save(&st.learned_path(), &learned);
+    }
+    let _ = app.emit("voiceo://learned", ());
+    let (f, t) = &pairs[0];
+    let more = if pairs.len() > 1 { format!(" +{}", pairs.len() - 1) } else { String::new() };
+    flash(app, "learned", &format!("Gelernt: {f} → {t}{more}"), 2200);
+    pairs.len()
+}
+
+/// Manual learn key: copies the current selection (the user's corrected text) and learns from it.
 fn learn_from_selection(app: &AppHandle) {
     let st = app.state::<AppState>();
     let last = st.last_text.lock().unwrap().clone();
@@ -366,20 +392,10 @@ fn learn_from_selection(app: &AppHandle) {
         Ok(t) => t.trim().to_string(),
         Err(e) => return flash(app, "error", &e, 2400),
     };
-    let pairs = learn::diff_pairs(&last, &corrected);
-    if pairs.is_empty() {
+    if learn_from_edit(app, &last, &corrected) == 0 {
         return flash(app, "error", "Keine Korrektur erkannt. Text markieren, dann Lern-Taste", 2600);
     }
-    let mut learned = st.learned.lock().unwrap();
-    for (from, to) in &pairs {
-        learn::add(&mut learned, from, to);
-    }
-    learn::save(&st.learned_path(), &learned);
     *st.last_text.lock().unwrap() = corrected;
-    drop(learned);
-    let _ = app.emit("voiceo://learned", ());
-    let (f, t) = &pairs[0];
-    flash(app, "learned", &format!("Gelernt: {f} → {t}"), 2000);
 }
 
 // ---------- commands ----------
@@ -448,6 +464,11 @@ fn run_setup(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
+fn list_inputs() -> Vec<String> {
+    audio::list_inputs()
+}
+
+#[tauri::command]
 fn get_history(state: State<AppState>) -> Vec<HistoryItem> {
     state.history.lock().unwrap().clone()
 }
@@ -467,15 +488,12 @@ fn system_status(state: State<AppState>) -> serde_json::Value {
         "uinput_error": state.keyboard_err.lock().unwrap().clone(),
         "wl_copy": output::wl_copy_available(),
         "wtype": output::wtype_available(),
+        "atspi": state.watcher.lock().unwrap().is_some(),
         "api_key": !state.settings.lock().unwrap().api_key.trim().is_empty(),
     })
 }
 
 fn main() {
-    // XWayland: lets the overlay position itself and stay on top; hotkeys use evdev anyway.
-    if std::env::var_os("GDK_BACKEND").is_none() {
-        std::env::set_var("GDK_BACKEND", "x11");
-    }
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
@@ -504,6 +522,7 @@ fn main() {
                 history: Mutex::new(history),
                 learned: Mutex::new(learned),
                 last_text: Mutex::new(String::new()),
+                watcher: Mutex::new(None),
                 http: groq::client(),
             });
 
@@ -529,16 +548,42 @@ fn main() {
                 let _ = handle.emit("voiceo://setup", ());
             });
 
-            // Overlay must never take focus (otherwise the paste lands in the wrong window).
+            // Overlay: wlr-layer-shell surface (never focused, anchored to the screen bottom).
             if let Some(w) = app.get_webview_window("overlay") {
                 if let Ok(gw) = w.gtk_window() {
-                    use gtk::prelude::GtkWindowExt;
+                    use gtk::prelude::{GtkWindowExt, WidgetExt};
+                    use gtk_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+                    if gtk_layer_shell::is_supported() {
+                        gw.init_layer_shell();
+                        gw.set_layer(Layer::Overlay);
+                        gw.set_keyboard_mode(KeyboardMode::None);
+                        gw.set_anchor(Edge::Bottom, true);
+                        gw.set_namespace("voiceo-overlay");
+                        gw.set_exclusive_zone(-1);
+                    }
                     gw.set_accept_focus(false);
                     gw.set_focus_on_map(false);
-                    gw.set_type_hint(gtk::gdk::WindowTypeHint::Dock);
                     gw.set_skip_taskbar_hint(true);
-                    gw.set_skip_pager_hint(true);
+                    gw.set_size_request(380, 210);
+                    gw.set_default_size(380, 210);
+                    gw.realize();
+                    if let Some(gdk_win) = gw.window() {
+                        gdk_win.set_pass_through(true);
+                    }
                 }
+            }
+
+            // AT-SPI watcher: learns from edits the user makes to dictated text
+            if app.state::<AppState>().settings.lock().unwrap().auto_learn {
+                let h = app.handle().clone();
+                let dir = app.state::<AppState>().dir.clone();
+                let watcher = watch::spawn(&dir, move |orig, fin| {
+                    let h = h.clone();
+                    std::thread::spawn(move || {
+                        learn_from_edit(&h, &orig, &fin);
+                    });
+                });
+                *app.state::<AppState>().watcher.lock().unwrap() = watcher;
             }
 
             // tray
@@ -582,7 +627,8 @@ fn main() {
             run_setup,
             get_learned,
             add_learned,
-            delete_learned
+            delete_learned,
+            list_inputs
         ])
         .run(tauri::generate_context!())
         .expect("error while running voiceo");

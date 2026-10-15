@@ -223,3 +223,56 @@ pub fn cleanup(
     }
     Ok(Some(out))
 }
+
+/// Asks the LLM which systematic recognition fixes the user made when editing a dictation.
+/// Returns (wrong, right) pairs.
+pub fn extract_learning(
+    http: &Client,
+    s: &Settings,
+    original: &str,
+    corrected: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let system = "You compare a dictated text (original, produced by speech recognition) with the \
+user's final edited version. Return a JSON object {\"entries\":[{\"from\":\"...\",\"to\":\"...\"}]}.\n\
+Include ONLY systematic recognition fixes the user made: misrecognized names, brand names, technical \
+terms or specific words. \"from\" is the wrongly written form, \"to\" the correct form (max 3 words each, \
+exact spelling and capitalization of the final text).\n\
+Ignore: rewording, added or removed content, grammar or style changes, punctuation, one-off typos. \
+At most 8 entries. If nothing qualifies return {\"entries\":[]}.";
+    let user = format!("ORIGINAL:\n{original}\n\nFINAL:\n{corrected}");
+    let mut body = json!({
+        "model": s.llm_model,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ]
+    });
+    if s.llm_model.starts_with("openai/gpt-oss") {
+        body["reasoning_effort"] = json!("low");
+    }
+    let resp = http
+        .post(format!("{BASE}/chat/completions"))
+        .bearer_auth(&s.api_key)
+        .json(&body)
+        .send()
+        .map_err(|e| format!("Netzwerk: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(api_error(resp));
+    }
+    let v: Value = resp.json().map_err(|e| e.to_string())?;
+    let content = v["choices"][0]["message"]["content"].as_str().unwrap_or("{}");
+    let start = content.find('{').unwrap_or(0);
+    let end = content.rfind('}').map(|i| i + 1).unwrap_or(content.len());
+    let parsed: Value = serde_json::from_str(&content[start..end]).map_err(|e| e.to_string())?;
+    let mut out = vec![];
+    for e in parsed["entries"].as_array().cloned().unwrap_or_default() {
+        let from = e["from"].as_str().unwrap_or("").trim().to_string();
+        let to = e["to"].as_str().unwrap_or("").trim().to_string();
+        if !from.is_empty() && !to.is_empty() && from != to && from.split_whitespace().count() <= 3 {
+            out.push((from, to));
+        }
+    }
+    Ok(out)
+}

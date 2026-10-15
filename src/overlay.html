@@ -4,82 +4,190 @@
 <meta charset="utf-8">
 <title>Voiceo Overlay</title>
 <style>
-  :root { --orange:#D97757; --bg:#1F1E1D; --edge:#3A3936; --text:#FAF9F5; --muted:#B0AEA5; }
-  * { box-sizing: border-box; margin: 0; }
-  html, body { background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; cursor: default; }
-  body { width: 264px; height: 64px; display: flex; align-items: center; justify-content: center;
-         font: 500 13px/1.2 ui-sans-serif, system-ui, "Inter", "Segoe UI", sans-serif; }
-  .pill { width: 252px; height: 52px; border-radius: 26px; background: var(--bg);
-          border: 1px solid var(--edge); box-shadow: 0 6px 22px rgba(0,0,0,.35);
-          display: flex; align-items: center; gap: 12px; padding: 0 18px 0 14px; color: var(--text);
-          transform: translateY(8px) scale(.96); opacity: 0; transition: transform .22s cubic-bezier(.2,.9,.3,1.2), opacity .18s; }
-  .pill.on { transform: none; opacity: 1; }
-  canvas { flex: none; width: 44px; height: 36px; image-rendering: pixelated; }
-  .viz { flex: 1; min-width: 0; height: 28px; display: flex; align-items: center; gap: 3px; }
-  .bar { flex: 1; min-width: 2px; max-width: 5px; border-radius: 3px; background: var(--orange); height: 3px; opacity: .9; }
-  .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-  .label.muted { color: var(--muted); }
-  .label.err { color: #E8A58E; }
-  .hide { display: none !important; }
+  html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 380px; height: 210px; }
 </style>
 </head>
 <body>
-  <div class="pill" id="pill">
-    <canvas id="mascot" width="44" height="36"></canvas>
-    <div class="viz" id="viz"></div>
-    <div class="label hide" id="label"></div>
-  </div>
+<canvas id="c"></canvas>
 <script src="mascot.js"></script>
 <script>
-  const BARS = 20;
-  const pill = document.getElementById("pill");
-  const viz = document.getElementById("viz");
-  const label = document.getElementById("label");
-  const canvas = document.getElementById("mascot");
-  const bars = [];
-  for (let i = 0; i < BARS; i++) { const b = document.createElement("div"); b.className = "bar"; viz.appendChild(b); bars.push(b); }
+(() => {
+  const W = 380, H = 210;
+  const BW = 236, BH = 62, BR = 22, GAP = 30;           // bubble
+  const REST_TOP = H - GAP - BH, CX = W / 2;
+  const HIDDEN = BH + GAP + 14;                         // offset that parks the bubble below the edge
+  const BARS = 17, BAR_W = 4, BAR_GAP = 5, BAR_MAX = 38, BAR_MIN = 4;
+  const FILL = "#2B2A28", EDGE = "rgba(255,255,255,0.09)", ORANGE = "#E27B58", TEXT = "#ECEAE2";
 
-  let state = "idle", level = 0, smooth = 0;
-  const hist = new Array(BARS).fill(0);
-  let lastPush = 0;
+  const canvas = document.getElementById("c");
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
 
-  function setLabel(text, cls) {
-    label.textContent = text; label.className = "label " + (cls || "");
-  }
+  let state = "idle", message = "", running = false, last = 0;
+  let off = HIDDEN, vel = 0, shown = false, wasClear = false;      // bubble vertical offset spring
+  let ripple = 0, ripplePhase = 0;                              // screen-edge membrane wobble
+  let mOff = 40, mVel = 0;                                      // mascot rises later than the bubble
+  let level = 0, rawBands = new Array(16).fill(0), peakRef = 0.02;
+  const env = new Array(BARS).fill(0), bh = new Array(BARS).fill(BAR_MIN), bv = new Array(BARS).fill(0);
+  let labelAlpha = 0, lookX = 0, lookT = 0, lookTarget = 0;
 
   function setState(s, msg) {
-    state = s;
-    const wave = s === "listening" || s === "thinking";
-    viz.classList.toggle("hide", !wave);
-    label.classList.toggle("hide", wave);
-    if (s === "done") setLabel("Eingefügt", "");
-    else if (s === "learned") setLabel(msg || "Gelernt", "");
-    else if (s === "error") setLabel(msg || "Fehler", "err");
-    pill.classList.toggle("on", s !== "idle");
+    state = s; message = msg || "";
+    shown = s !== "idle";
+    if (shown && !running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
   }
-
   const ev = window.__TAURI__.event;
   ev.listen("voiceo://state", (e) => setState(e.payload.state, e.payload.message));
-  ev.listen("voiceo://level", (e) => { level = e.payload; });
+  ev.listen("voiceo://audio", (e) => { rawBands = e.payload.bands; level = e.payload.rms; });
 
-  function frame(t) {
-    smooth += (level - smooth) * 0.35;
-    if (state !== "listening") level *= 0.8;
-    if (t - lastPush > 45) {
-      lastPush = t;
-      hist.shift();
-      hist.push(state === "listening" ? Math.min(1, smooth * 12)
-        : state === "thinking" ? 0.18 + 0.12 * Math.sin(t / 220) : 0);
-    }
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  // dB-ish mapping, auto-ranged so quiet mics still move
+  function band01(a, i) {
+    const db = 20 * Math.log10(a + 1e-5);
+    const tilt = 1 + i * 0.045;
+    return Math.pow(Math.min(1, Math.max(0, (db + 64) / 44)), 1.25) * tilt;
+  }
+
+  function updateBars(dt, t) {
     for (let i = 0; i < BARS; i++) {
-      let v = hist[i];
-      if (state === "thinking") v = 0.15 + 0.35 * (0.5 + 0.5 * Math.sin(t / 240 - i * 0.55));
-      bars[i].style.height = Math.max(3, Math.round(v * 28)) + "px";
+      const d = Math.abs(i - (BARS - 1) / 2);                     // 0 = center
+      const bi = (d / ((BARS - 1) / 2)) * 13;                      // center = low freq
+      const lo = Math.floor(bi), hi = Math.min(15, lo + 1), f = bi - lo;
+      let target = 0;
+      if (state === "listening") {
+        const a = rawBands[lo] * (1 - f) + rawBands[hi] * f;
+        target = Math.min(1, band01(a, bi) * (1.05 - d * 0.035));
+      } else if (state === "thinking") {
+        target = 0.16 + 0.2 * (0.5 + 0.5 * Math.sin(t / 230 - i * 0.6));
+      }
+      // fast attack, slower release -> then a spring for the bounce
+      env[i] += (target - env[i]) * (target > env[i] ? 0.7 : 0.2);
+      const goal = BAR_MIN + env[i] * (BAR_MAX - BAR_MIN);
+      const k = 520, c = 24;
+      bv[i] += (-k * (bh[i] - goal) - c * bv[i]) * dt;
+      bh[i] = Math.max(BAR_MIN, bh[i] + bv[i] * dt);
     }
-    drawMascot(canvas, state, t, smooth);
+  }
+
+  function drawMembrane(top, t) {
+    // dome while the bubble pushes through the screen edge
+    const apex = top - 5;
+    if (apex < H && top > H - BH + 2) {
+      const half = BW / 2 + 14;
+      ctx.beginPath();
+      ctx.moveTo(CX - half - 40, H);
+      for (let x = CX - half - 40; x <= CX + half + 40; x += 4) {
+        const dx = Math.abs(x - CX) / half;
+        const y = H - (H - apex) * Math.exp(-Math.pow(dx, 4));
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(CX + half + 40, H); ctx.closePath();
+      ctx.fillStyle = FILL; ctx.fill();
+      ctx.strokeStyle = EDGE; ctx.lineWidth = 1; ctx.stroke();
+    }
+    // wobbling sheet after the break-through
+    if (ripple > 0.15) {
+      const g = ctx.createLinearGradient(CX - 190, 0, CX + 190, 0);
+      g.addColorStop(0, "rgba(43,42,40,0)"); g.addColorStop(0.25, "rgba(43,42,40,1)");
+      g.addColorStop(0.75, "rgba(43,42,40,1)"); g.addColorStop(1, "rgba(43,42,40,0)");
+      ctx.beginPath(); ctx.moveTo(CX - 190, H);
+      for (let x = CX - 190; x <= CX + 190; x += 4) {
+        const dx = Math.abs(x - CX);
+        const y = H - 3 - ripple * Math.exp(-dx / 95) * Math.sin(dx / 13 - ripplePhase);
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(CX + 190, H); ctx.closePath();
+      ctx.fillStyle = g; ctx.globalAlpha = Math.min(1, ripple / 2.5); ctx.fill(); ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawBubble(top, t) {
+    const x = CX - BW / 2;
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
+    rr(x, top, BW, BH, BR); ctx.fillStyle = FILL; ctx.fill();
+    ctx.restore();
+    rr(x + 0.5, top + 0.5, BW - 1, BH - 1, BR); ctx.strokeStyle = EDGE; ctx.lineWidth = 1; ctx.stroke();
+
+    const showBars = state === "listening" || state === "thinking";
+    labelAlpha += ((showBars ? 0 : 1) - labelAlpha) * 0.22;
+    if (showBars || labelAlpha < 0.98) {
+      const total = BARS * BAR_W + (BARS - 1) * BAR_GAP;
+      let bx = CX - total / 2;
+      const cy = top + BH / 2;
+      ctx.fillStyle = ORANGE;
+      ctx.globalAlpha = 1 - labelAlpha;
+      for (let i = 0; i < BARS; i++) {
+        const h = bh[i];
+        rr(bx, cy - h / 2, BAR_W, h, BAR_W / 2); ctx.fill();
+        bx += BAR_W + BAR_GAP;
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (labelAlpha > 0.02) {
+      let text = state === "done" ? "Eingefügt" : state === "learned" ? message : state === "error" ? message : "";
+      ctx.font = "500 14px ui-sans-serif, system-ui, 'Inter', sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const max = BW - 110;
+      while (ctx.measureText(text).width > max && text.length > 3) text = text.slice(0, -2);
+      ctx.globalAlpha = labelAlpha;
+      ctx.fillStyle = state === "error" ? "#F0A58C" : TEXT;
+      ctx.fillText(text, CX - 22, top + BH / 2 + 1);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.034, (now - last) / 1000); last = now;
+    const t = now;
+
+    // bubble spring (bouncy in, firmer out)
+    const goal = shown ? 0 : HIDDEN;
+    const k = shown ? 210 : 360, c = shown ? 17 : 30;
+    vel += (-k * (off - goal) - c * vel) * dt;
+    off += vel * dt;
+    const top = REST_TOP + off;
+
+    // break-through: first time the bubble clears the screen edge, kick the membrane
+    const clear = top + BH < H - 2;
+    if (clear !== wasClear) { wasClear = clear; ripple = shown ? 9 : 6; ripplePhase = 0; }
+    ripple *= Math.pow(0.012, dt);           // ~0.5s decay
+    ripplePhase += dt * 24;
+
+    // mascot rises after the bubble
+    const mGoal = shown ? 0 : 46;
+    mVel += (-340 * (mOff - mGoal) - 17 * mVel) * dt;
+    mOff += mVel * dt;
+
+    // gaze
+    lookT += dt;
+    if (lookT > 1.6 + Math.random()) { lookT = 0; lookTarget = (Math.random() - 0.5) * 1.6; }
+    lookX += (((state === "listening") ? -0.55 : lookTarget) - lookX) * 0.08;
+
+    updateBars(dt, t);
+    ctx.clearRect(0, 0, W, H);
+
+    // mascot sits behind the bubble and peeks over its top-right corner
+    const mx = CX + BW / 2 - 50, my = top - 15 + mOff;
+    const mState = state === "idle" ? "idle" : state;
+    window.Voi.draw(ctx, { x: mx, y: my, s: 1, state: mState, t, level: Math.min(1, level * 9), look: [lookX, state === "listening" ? 0.1 : 0] });
+    drawBubble(top, t);
+    window.Voi.hands(ctx, { x: mx, y: top + 2 + Math.max(0, mOff * 0.4), s: 1 });
+    drawMembrane(top, t);
+
+    const settled = !shown && off > HIDDEN - 0.5 && Math.abs(vel) < 1 && ripple < 0.15 && mOff > 45;
+    if (settled) { running = false; ctx.clearRect(0, 0, W, H); return; }
     requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+})();
 </script>
 </body>
 </html>

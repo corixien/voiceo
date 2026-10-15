@@ -35,6 +35,14 @@ pub struct Settings {
     pub silence_threshold: f32,
     pub trim_silence: bool,
     pub history_limit: usize,
+    /// "" = default microphone
+    pub input_device: String,
+    pub normalize: bool,
+    pub highpass: bool,
+    /// watch edited text after insertion and learn corrections (needs accessibility)
+    pub auto_learn: bool,
+    /// "system" | "dark" | "light"
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -64,6 +72,11 @@ impl Default for Settings {
             silence_threshold: 0.01,
             trim_silence: true,
             history_limit: 100,
+            input_device: String::new(),
+            normalize: true,
+            highpass: true,
+            auto_learn: true,
+            theme: "system".into(),
         }
     }
 }

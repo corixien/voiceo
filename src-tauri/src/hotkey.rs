@@ -32,6 +32,7 @@ pub fn spawn(
     get_hotkeys: impl Fn() -> Vec<Vec<u16>> + Send + Sync + 'static,
     capture: Capture,
     on_event: impl Fn(usize, bool) + Send + Sync + 'static,
+    on_key: impl Fn(u16) + Send + Sync + 'static,
     count: Arc<AtomicUsize>,
 ) {
     static STARTED: AtomicBool = AtomicBool::new(false);
@@ -45,6 +46,7 @@ pub fn spawn(
     });
     let get_hotkeys: Arc<dyn Fn() -> Vec<Vec<u16>> + Send + Sync> = Arc::new(get_hotkeys);
     let on_event: Arc<dyn Fn(usize, bool) + Send + Sync> = Arc::new(on_event);
+    let on_key: Arc<dyn Fn(u16) + Send + Sync> = Arc::new(on_key);
     let known: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
 
     std::thread::spawn(move || loop {
@@ -60,6 +62,7 @@ pub fn spawn(
                 capture.clone(),
                 get_hotkeys.clone(),
                 on_event.clone(),
+                on_key.clone(),
                 known.clone(),
                 count.clone(),
             );
@@ -76,6 +79,7 @@ fn read_device(
     capture: Capture,
     get_hotkeys: Arc<dyn Fn() -> Vec<Vec<u16>> + Send + Sync>,
     on_event: Arc<dyn Fn(usize, bool) + Send + Sync>,
+    on_key: Arc<dyn Fn(u16) + Send + Sync>,
     known: Arc<Mutex<HashSet<PathBuf>>>,
     count: Arc<AtomicUsize>,
 ) {
@@ -94,9 +98,6 @@ fn read_device(
                 }
                 let code = ev.code();
                 let down = ev.value() == 1;
-                if std::env::var_os("VOICEO_DEBUG_KEYS").is_some() {
-                    eprintln!("[voiceo] key {code} down={down} on {}", path.display());
-                }
                 let mut pressed = shared.pressed.lock().unwrap();
                 if down {
                     pressed.insert(code);
@@ -117,6 +118,9 @@ fn read_device(
                     continue;
                 }
 
+                if down {
+                    on_key(code);
+                }
                 let hotkeys = get_hotkeys();
                 let states: Vec<bool> = hotkeys
                     .iter()

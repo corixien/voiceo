@@ -22,10 +22,10 @@ impl Recorder {
     }
 }
 
-pub fn start(app: AppHandle, max_seconds: u32) -> Result<Recorder, String> {
+pub fn start(app: AppHandle, max_seconds: u32, device: String) -> Result<Recorder, String> {
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
-    let join = std::thread::spawn(move || run(app, max_seconds, stop_rx, ready_tx));
+    let join = std::thread::spawn(move || run(app, max_seconds, device, stop_rx, ready_tx));
     match ready_rx.recv_timeout(Duration::from_secs(4)) {
         Ok(Ok(())) => Ok(Recorder { stop: stop_tx, join, started: Instant::now() }),
         Ok(Err(e)) => Err(e),
@@ -36,13 +36,21 @@ pub fn start(app: AppHandle, max_seconds: u32) -> Result<Recorder, String> {
 fn run(
     app: AppHandle,
     max_seconds: u32,
+    device: String,
     stop_rx: mpsc::Receiver<()>,
     ready: mpsc::Sender<Result<(), String>>,
 ) -> Result<(Vec<f32>, u32), String> {
     let setup = || -> Result<(cpal::Stream, Arc<Mutex<Vec<f32>>>, u32), String> {
         let host = cpal::default_host();
-        let dev = host
-            .default_input_device()
+        let named = if device.is_empty() {
+            None
+        } else {
+            host.input_devices()
+                .ok()
+                .and_then(|mut d| d.find(|x| x.name().map(|n| n == device).unwrap_or(false)))
+        };
+        let dev = named
+            .or_else(|| host.default_input_device())
             .ok_or("Kein Mikrofon gefunden")?;
         let cfg = dev.default_input_config().map_err(|e| e.to_string())?;
         let rate = cfg.sample_rate().0;
@@ -50,9 +58,9 @@ fn run(
         let buf = Arc::new(Mutex::new(Vec::<f32>::with_capacity(rate as usize * 30)));
         let scfg: cpal::StreamConfig = cfg.clone().into();
         let stream = match cfg.sample_format() {
-            cpal::SampleFormat::F32 => build::<f32>(&dev, &scfg, channels, buf.clone(), app.clone()),
-            cpal::SampleFormat::I16 => build::<i16>(&dev, &scfg, channels, buf.clone(), app.clone()),
-            cpal::SampleFormat::U16 => build::<u16>(&dev, &scfg, channels, buf.clone(), app.clone()),
+            cpal::SampleFormat::F32 => build::<f32>(&dev, &scfg, channels, rate, buf.clone(), app.clone()),
+            cpal::SampleFormat::I16 => build::<i16>(&dev, &scfg, channels, rate, buf.clone(), app.clone()),
+            cpal::SampleFormat::U16 => build::<u16>(&dev, &scfg, channels, rate, buf.clone(), app.clone()),
             f => Err(format!("Nicht unterstuetztes Sample-Format: {f:?}")),
         }?;
         stream.play().map_err(|e| e.to_string())?;
@@ -78,6 +86,7 @@ fn build<T>(
     dev: &cpal::Device,
     cfg: &cpal::StreamConfig,
     ch: usize,
+    rate: u32,
     buf: Arc<Mutex<Vec<f32>>>,
     app: AppHandle,
 ) -> Result<cpal::Stream, String>
@@ -91,6 +100,7 @@ where
         move |data: &[T], _| {
             let mut sum_sq = 0f32;
             let mut n = 0usize;
+            let mut window: Vec<f32> = Vec::new();
             {
                 let mut b = buf.lock().unwrap();
                 for frame in data.chunks(ch) {
@@ -99,16 +109,79 @@ where
                     n += 1;
                     b.push(m);
                 }
+                if last.elapsed() >= Duration::from_millis(20) {
+                    window = b[b.len().saturating_sub(1024)..].to_vec();
+                }
             }
-            if n > 0 && last.elapsed() >= Duration::from_millis(40) {
+            if n > 0 && !window.is_empty() {
                 last = Instant::now();
-                let _ = app.emit("voiceo://level", (sum_sq / n as f32).sqrt());
+                let bands = bands(&window, rate);
+                let _ = app.emit(
+                    "voiceo://audio",
+                    serde_json::json!({ "rms": (sum_sq / n as f32).sqrt(), "bands": bands }),
+                );
             }
         },
         |e| eprintln!("audio error: {e}"),
         None,
     )
     .map_err(|e| e.to_string())
+}
+
+pub const BAND_COUNT: usize = 16;
+
+/// Goertzel magnitudes on 16 log-spaced bands (90 Hz - 6.5 kHz) for the overlay visualizer.
+fn bands(win: &[f32], rate: u32) -> [f32; BAND_COUNT] {
+    let n = win.len() as f32;
+    let mut out = [0f32; BAND_COUNT];
+    for (i, o) in out.iter_mut().enumerate() {
+        let f = 90.0 * (6500.0f32 / 90.0).powf(i as f32 / (BAND_COUNT as f32 - 1.0));
+        let w = 2.0 * std::f32::consts::PI * f / rate as f32;
+        let coeff = 2.0 * w.cos();
+        let (mut s1, mut s2) = (0f32, 0f32);
+        for (k, &x) in win.iter().enumerate() {
+            let hann = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * k as f32 / (n - 1.0)).cos();
+            let s = x * hann + coeff * s1 - s2;
+            s2 = s1;
+            s1 = s;
+        }
+        let p = s1 * s1 + s2 * s2 - coeff * s1 * s2;
+        *o = p.max(0.0).sqrt() * 4.0 / n;
+    }
+    out
+}
+
+pub fn list_inputs() -> Vec<String> {
+    cpal::default_host()
+        .input_devices()
+        .map(|d| d.filter_map(|x| x.name().ok()).collect())
+        .unwrap_or_default()
+}
+
+/// 80 Hz first-order high-pass (removes rumble and desk thumps).
+pub fn highpass(samples: &mut [f32]) {
+    let rc = 1.0 / (2.0 * std::f32::consts::PI * 80.0);
+    let dt = 1.0 / TARGET_RATE as f32;
+    let a = rc / (rc + dt);
+    let (mut prev_x, mut prev_y) = (0f32, 0f32);
+    for s in samples.iter_mut() {
+        let x = *s;
+        let y = a * (prev_y + x - prev_x);
+        prev_x = x;
+        prev_y = y;
+        *s = y;
+    }
+}
+
+/// Peak-normalize quiet recordings (max +24 dB) so Whisper gets a healthy level.
+pub fn normalize(samples: &mut [f32]) {
+    let p = peak(samples);
+    if p > 0.0005 && p < 0.7 {
+        let g = (0.85 / p).min(16.0);
+        for s in samples.iter_mut() {
+            *s *= g;
+        }
+    }
 }
 
 /// Box-filter resample to 16 kHz mono.
