@@ -224,38 +224,26 @@ function renderModes() {
 
 // ---------- hotkeys (both rows share the same component) ----------
 const HK = {
-  hotkey: { label: "hotkey", hint: "hotkey.hint", presets: [[97], [100], [127], [119], [70]], optional: false },
-  learn_hotkey: { label: "learnkey", hint: "learnkey.hint", presets: [[127], [119], [70], [100]], optional: true },
+  hotkey: { label: "hotkey", hint: "hotkey.hint" },
+  learn_hotkey: { label: "learnkey", hint: "learnkey.hint" },
 };
 async function renderHotkey() {
   for (const [field, cfg] of Object.entries(HK)) {
     const row = $(`[data-hk="${field}"]`);
     const keys = (await invoke("key_labels", { codes: S[field] || [] }));
-    const presets = [];
-    if (cfg.optional) presets.push({ codes: [], label: t("off") });
-    for (const codes of cfg.presets) presets.push({ codes, label: (await invoke("key_labels", { codes }))[0] });
-    const same = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
     row.innerHTML = `
       <div class="top">
         <div class="l"><b>${t(cfg.label)}</b><small>${t(cfg.hint)}</small></div>
         <div class="r"><div class="keys">${keys.map((l) => `<kbd>${l}</kbd>`).join("") || `<kbd>${t("off")}</kbd>`}</div>
           <button class="btn">${t("change")}</button></div>
-      </div>
-      <div class="presets"></div>`;
-    const box = $(".presets", row);
-    presets.forEach((p) => {
-      const b = document.createElement("button");
-      b.textContent = p.label; b.className = same(S[field], p.codes) ? "on" : "";
-      b.onclick = () => { S[field] = p.codes; queueSave(); renderHotkey(); };
-      box.appendChild(b);
-    });
+      </div>`;
     $(".btn", row).onclick = async () => {
       row.classList.add("capturing");
       $(".keys", row).innerHTML = `<kbd>${t("press")}</kbd>`;
       $(".btn", row).disabled = true;
       try {
         const codes = await invoke("capture_hotkey");
-        if (codes.length) { S[field] = [codes[0]]; queueSave(); }
+        S[field] = codes; queueSave();   // empty = Esc pressed = hotkey off
       } catch (e) { toast(String(e)); }
       row.classList.remove("capturing");
       renderHotkey();

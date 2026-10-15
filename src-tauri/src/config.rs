@@ -97,13 +97,6 @@ impl Settings {
         if s.llm_model.starts_with("llama-") {
             s.llm_model = Self::default().llm_model;
         }
-        // hotkeys are single keys now
-        if s.hotkey.len() != 1 {
-            s.hotkey = Self::default().hotkey;
-        }
-        if s.learn_hotkey.len() > 1 {
-            s.learn_hotkey.clear();
-        }
         s
     }
 

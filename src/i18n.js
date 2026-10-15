@@ -8,7 +8,7 @@ window.I18N = {
     "general.sub": "Hotkey, Mikrofon, Groq.",
     "groq": "Groq", "apikey": "API-Key", "apikey.hint": "Bleibt lokal.", "test": "Testen", "testing": "Teste…",
     "connected": "Verbunden, {n} Modelle",
-    "dictation": "Diktat", "hotkey": "Hotkey", "hotkey.hint": "Eine einzelne Taste ist am sichersten.", "change": "Ändern", "press": "Taste drücken…", "off": "aus",
+    "dictation": "Diktat", "hotkey": "Hotkey", "hotkey.hint": "Beliebig viele Tasten. Esc = aus.", "change": "Ändern", "press": "Taste drücken…", "off": "aus",
         "behavior": "Verhalten", "hold": "Halten", "toggle": "Umschalten",
     "mic": "Mikrofon", "mic.default": "Standard",
     "dictlang": "Diktat-Sprache", "lang.auto": "Automatisch (DE/EN)",
@@ -38,7 +38,7 @@ window.I18N = {
 
     "dict.sub": "Aus deinen Korrekturen gelernt.",
     "learning": "Lernen", "autolearn": "Automatisch lernen", "autolearn.hint": "Beobachtet das Feld nach dem Einfügen.",
-    "learnkey": "Lern-Taste", "learnkey.hint": "Text markieren, Taste drücken.", "learned": "Gelernte Korrekturen",
+    "learnkey": "Lern-Taste", "learnkey.hint": "Text markieren, Tasten drücken. Esc = aus.", "learned": "Gelernte Korrekturen",
     "learned.empty": "Noch nichts gelernt.", "times": "{n}× gelernt", "wrong": "falsch", "right": "richtig", "add": "Hinzufügen", "remove": "Entfernen",
     "terms": "Eigene Begriffe", "terms.hint": "Ein Begriff pro Zeile",
 
@@ -65,7 +65,7 @@ window.I18N = {
     "general.sub": "Hotkey, microphone, Groq.",
     "groq": "Groq", "apikey": "API key", "apikey.hint": "Stays local.", "test": "Test", "testing": "Testing…",
     "connected": "Connected, {n} models",
-    "dictation": "Dictation", "hotkey": "Hotkey", "hotkey.hint": "A single key is safest.", "change": "Change", "press": "Press a key…", "off": "off",
+    "dictation": "Dictation", "hotkey": "Hotkey", "hotkey.hint": "Any number of keys. Esc = off.", "change": "Change", "press": "Press a key…", "off": "off",
         "behavior": "Behavior", "hold": "Hold", "toggle": "Toggle",
     "mic": "Microphone", "mic.default": "Default",
     "dictlang": "Dictation language", "lang.auto": "Automatic (DE/EN)",
@@ -95,7 +95,7 @@ window.I18N = {
 
     "dict.sub": "Learned from your corrections.",
     "learning": "Learning", "autolearn": "Learn automatically", "autolearn.hint": "Watches the field after pasting.",
-    "learnkey": "Learn key", "learnkey.hint": "Select text, press the key.", "learned": "Learned corrections",
+    "learnkey": "Learn key", "learnkey.hint": "Select text, press the keys. Esc = off.", "learned": "Learned corrections",
     "learned.empty": "Nothing learned yet.", "times": "learned {n}×", "wrong": "wrong", "right": "right", "add": "Add", "remove": "Remove",
     "terms": "Custom terms", "terms.hint": "One term per line",
 

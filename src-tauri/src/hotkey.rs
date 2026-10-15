@@ -10,6 +10,7 @@ pub type Capture = Arc<Mutex<Option<mpsc::Sender<Vec<u16>>>>>;
 
 struct Shared {
     pressed: Mutex<HashSet<u16>>,
+    captured: Mutex<HashSet<u16>>,
     active: [AtomicBool; 2],
 }
 
@@ -40,6 +41,7 @@ pub fn spawn(
     }
     let shared = Arc::new(Shared {
         pressed: Mutex::new(HashSet::new()),
+        captured: Mutex::new(HashSet::new()),
         active: [AtomicBool::new(false), AtomicBool::new(false)],
     });
     let get_hotkeys: Arc<dyn Fn() -> Vec<Vec<u16>> + Send + Sync> = Arc::new(get_hotkeys);
@@ -105,8 +107,18 @@ fn read_device(
 
                 // capture mode: record the biggest combo until everything is released
                 if let Some(tx) = capture.lock().unwrap().as_ref() {
+                    let mut cap = shared.captured.lock().unwrap();
                     if down {
-                        let _ = tx.send(vec![code]); // single key: first key pressed wins
+                        if code == 1 && cap.is_empty() {
+                            // Esc as the first key = switch this hotkey off
+                            let _ = tx.send(vec![]);
+                            continue;
+                        }
+                        cap.insert(code);
+                    } else if pressed.is_empty() && !cap.is_empty() {
+                        let mut codes: Vec<u16> = cap.drain().collect();
+                        codes.sort();
+                        let _ = tx.send(codes); // everything released: the held combination
                     }
                     continue;
                 }
