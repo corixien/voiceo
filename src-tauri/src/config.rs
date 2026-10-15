@@ -43,6 +43,10 @@ pub struct Settings {
     pub auto_learn: bool,
     /// "system" | "dark" | "light"
     pub theme: String,
+    /// "lexend" | "anthropic" | "system"
+    pub font: String,
+    /// "de" | "en"
+    pub ui_lang: String,
 }
 
 impl Default for Settings {
@@ -77,6 +81,8 @@ impl Default for Settings {
             highpass: true,
             auto_learn: true,
             theme: "system".into(),
+            font: "lexend".into(),
+            ui_lang: "de".into(),
         }
     }
 }

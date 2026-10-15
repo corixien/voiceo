@@ -77,11 +77,28 @@ pub fn wl_copy_available() -> bool {
     Command::new("wl-copy").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok()
 }
 
+fn wl_clear() {
+    let _ = Command::new("wl-copy").arg("--clear").stdout(Stdio::null()).stderr(Stdio::null()).status();
+}
+
+/// Previous clipboard text, if the clipboard currently holds text.
+fn clipboard_text() -> Option<String> {
+    let types = Command::new("wl-paste").arg("--list-types").output().ok()?;
+    let types = String::from_utf8_lossy(&types.stdout);
+    if !types.lines().any(|l| l.starts_with("text/")) {
+        return None;
+    }
+    wl_paste().ok()
+}
+
 /// Copies and/or inserts `text` according to settings. Returns a warning string on partial failure.
+/// With "keep in clipboard" off, the previous clipboard content is restored after pasting.
 pub fn deliver(s: &Settings, kb: &mut Option<VirtualKb>, text: &str) -> Result<Option<String>, String> {
     let mut warn = None;
-    let needs_clip = s.copy_to_clipboard || (s.auto_insert && s.insert_method == "paste");
-    if needs_clip {
+    let pasting = s.auto_insert && s.insert_method == "paste";
+    let restore = !s.copy_to_clipboard && pasting;
+    let previous = if restore { clipboard_text() } else { None };
+    if s.copy_to_clipboard || pasting {
         wl_copy(text)?;
     }
     if s.auto_insert {
@@ -95,17 +112,25 @@ pub fn deliver(s: &Settings, kb: &mut Option<VirtualKb>, text: &str) -> Result<O
                 .unwrap_or(false);
             if !ok {
                 warn = Some("wtype fehlgeschlagen, Text liegt in der Zwischenablage".to_string());
-                if !s.copy_to_clipboard {
-                    wl_copy(text)?;
-                }
+                wl_copy(text)?;
             }
         } else {
             match kb.as_mut() {
                 Some(k) => k.paste(s.paste_shortcut == "ctrl+shift+v")?,
                 None => {
-                    warn = Some("Einfuegen nicht moeglich (uinput), Text liegt in der Zwischenablage".to_string())
+                    warn = Some("Einfuegen nicht moeglich (uinput), Text liegt in der Zwischenablage".to_string());
+                    return Ok(warn); // keep our text in the clipboard so the user can paste manually
                 }
             }
+        }
+    }
+    if restore {
+        std::thread::sleep(Duration::from_millis(220)); // let the target app read the clipboard first
+        match previous {
+            Some(p) if !p.is_empty() => {
+                let _ = wl_copy(&p);
+            }
+            _ => wl_clear(),
         }
     }
     Ok(warn)

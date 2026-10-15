@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <title>Voiceo Overlay</title>
 <style>
+  @font-face { font-family: "Lexend Deca"; font-weight: 400; src: url("fonts/lexend-deca-400.woff2") format("woff2"); }
+  @font-face { font-family: "Lexend Deca"; font-weight: 500 700; src: url("fonts/lexend-deca-700.woff2") format("woff2"); }
   html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; }
   canvas { display: block; width: 380px; height: 210px; }
 </style>
@@ -33,10 +35,25 @@
   let level = 0, rawBands = new Array(16).fill(0), peakRef = 0.02;
   const env = new Array(BARS).fill(0), bh = new Array(BARS).fill(BAR_MIN), bv = new Array(BARS).fill(0);
   let labelAlpha = 0, lookX = 0, lookT = 0, lookTarget = 0;
+  let family = '"Lexend Deca", ui-sans-serif, system-ui, sans-serif', lang = "de";
+  const FAMILIES = {
+    lexend: '"Lexend Deca", ui-sans-serif, system-ui, sans-serif',
+    anthropic: '"Anthropic Sans", "Styrene B", "Inter", ui-sans-serif, system-ui, sans-serif',
+    system: 'ui-sans-serif, system-ui, "Inter", "Segoe UI", sans-serif',
+  };
+  async function loadPrefs() {
+    try {
+      const s = await window.__TAURI__.core.invoke("get_settings");
+      family = FAMILIES[s.font] || FAMILIES.lexend; lang = s.ui_lang || "de";
+    } catch (_) {}
+    try { await document.fonts.load('700 15px "Lexend Deca"'); } catch (_) {}
+  }
+  loadPrefs();
 
   function setState(s, msg) {
     state = s; message = msg || "";
     shown = s !== "idle";
+    if (shown && s === "listening") loadPrefs();
     if (shown && !running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
   }
   const ev = window.__TAURI__.event;
@@ -133,14 +150,14 @@
       ctx.globalAlpha = 1;
     }
     if (labelAlpha > 0.02) {
-      let text = state === "done" ? "Eingefügt" : state === "learned" ? message : state === "error" ? message : "";
-      ctx.font = "500 14px ui-sans-serif, system-ui, 'Inter', sans-serif";
+      let text = state === "done" ? (lang === "en" ? "Inserted" : "Eingefügt") : (state === "learned" || state === "error") ? message : "";
+      ctx.font = `700 15px ${family}`;
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      const max = BW - 110;
-      while (ctx.measureText(text).width > max && text.length > 3) text = text.slice(0, -2);
+      const max = BW - 56;
+      while (ctx.measureText(text).width > max && text.length > 3) text = text.slice(0, -2).trimEnd() + "…";
       ctx.globalAlpha = labelAlpha;
       ctx.fillStyle = state === "error" ? "#F0A58C" : TEXT;
-      ctx.fillText(text, CX - 22, top + BH / 2 + 1);
+      ctx.fillText(text, CX, top + BH / 2 + 1);
       ctx.globalAlpha = 1;
     }
   }

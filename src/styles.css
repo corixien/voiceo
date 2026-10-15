@@ -1,3 +1,7 @@
+@font-face { font-family: "Lexend Deca"; font-weight: 400; font-display: swap; src: url("fonts/lexend-deca-400.woff2") format("woff2"); }
+@font-face { font-family: "Lexend Deca"; font-weight: 500; font-display: swap; src: url("fonts/lexend-deca-500.woff2") format("woff2"); }
+@font-face { font-family: "Lexend Deca"; font-weight: 600 700; font-display: swap; src: url("fonts/lexend-deca-700.woff2") format("woff2"); }
+
 :root {
   color-scheme: dark;
   --bg: #1A1918;
@@ -18,13 +22,16 @@
   --bad: #E5705C;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  --sans: ui-sans-serif, system-ui, "Inter", "Segoe UI", sans-serif;
+  --font-system: ui-sans-serif, system-ui, "Inter", "Segoe UI", sans-serif;
+  --sans: "Lexend Deca", var(--font-system);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) { --lightvars: 1; }
 }
+:root[data-font="anthropic"] { --sans: "Anthropic Sans", "Styrene B", "Inter", system-ui, sans-serif; }
+:root[data-font="system"] { --sans: var(--font-system); }
 :root[data-theme="light"],
 :root.light {
   color-scheme: light;
@@ -46,7 +53,7 @@
 * { box-sizing: border-box; margin: 0; }
 html, body { height: 100%; }
 body {
-  background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); display: flex; overflow: hidden;
+  background: var(--bg); color: var(--text); font: 13.5px/1.5 var(--sans); display: flex; overflow: hidden;
   -webkit-font-smoothing: antialiased; letter-spacing: -0.003em;
 }
 ::selection { background: var(--accent-soft); }
@@ -270,3 +277,17 @@ kbd {
 
 .row.col > .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; }
 .row.col .presets { margin-top: 0; }
+
+/* ---------- v3 fixes ---------- */
+.card.raise { position: relative; z-index: 60; }
+.menu.up { top: auto; bottom: calc(100% + 8px); transform-origin: bottom; }
+.sel.open .menu.up { transform: none; }
+.menu.up { transform: translateY(6px) scale(0.97); }
+.row.col > .top .l { flex: 1; min-width: 0; }
+.row.col > .top .r { flex: 0 1 auto; max-width: 56%; flex-wrap: wrap; justify-content: flex-end; row-gap: 8px; }
+.keys { max-width: 300px; row-gap: 5px; }
+kbd { padding: 3px 9px; font-size: 12px; white-space: nowrap; }
+.seg.mini { align-self: flex-start; margin: 0 4px 10px; }
+.seg.mini button { padding: 4px 12px; font-size: 12px; }
+.row .l small { max-width: 340px; }
+.brand b { font-family: var(--serif); }

@@ -10,253 +10,235 @@
 <aside>
   <div class="brand" id="brand">
     <canvas id="logo" width="124" height="124"></canvas>
-    <div><b>Voiceo</b><small>Sprich. Es erscheint.</small></div>
+    <div><b>Voiceo</b><small data-i18n="tagline"></small></div>
   </div>
   <nav id="nav">
     <div id="nav-ind"></div>
-    <button data-tab="general" class="active"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Allgemein</button>
-    <button data-tab="output"><svg viewBox="0 0 24 24"><path d="M5 12h12M13 6l6 6-6 6"/><path d="M4 5v14"/></svg>Ausgabe</button>
-    <button data-tab="modes"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>Modi</button>
-    <button data-tab="dict"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>Wörterbuch</button>
-    <button data-tab="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Verlauf</button>
-    <button data-tab="advanced"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Erweitert</button>
+    <button data-tab="general" class="active"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span data-i18n="nav.general"></span></button>
+    <button data-tab="output"><svg viewBox="0 0 24 24"><path d="M5 12h12M13 6l6 6-6 6"/><path d="M4 5v14"/></svg><span data-i18n="nav.output"></span></button>
+    <button data-tab="modes"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg><span data-i18n="nav.modes"></span></button>
+    <button data-tab="dict"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg><span data-i18n="nav.dict"></span></button>
+    <button data-tab="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span data-i18n="nav.history"></span></button>
+    <button data-tab="advanced"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span data-i18n="nav.advanced"></span></button>
   </nav>
   <div class="spacer"></div>
-  <div class="status-mini"><span class="dot" id="mini-dot"></span><span id="mini-text">Prüfe…</span></div>
+  <div class="seg mini" id="lang-switch"><button data-lang="de">DE</button><button data-lang="en">EN</button></div>
+  <div class="status-mini"><span class="dot" id="mini-dot"></span><span id="mini-text"></span></div>
 </aside>
 
 <main>
-  <!-- ALLGEMEIN -->
+  <!-- GENERAL -->
   <section id="tab-general" class="active">
-    <h1>Allgemein</h1>
-    <p class="sub">Verbinde Groq, wähle deinen Hotkey und dein Mikrofon. Mehr braucht es nicht.</p>
+    <h1 data-i18n="nav.general"></h1>
+    <p class="sub" data-i18n="general.sub"></p>
 
     <div class="card">
-      <h2>Groq</h2>
+      <h2 data-i18n="groq"></h2>
       <div class="row">
-        <div class="l"><b>API-Key</b><small>Kostenlos auf console.groq.com. Bleibt lokal auf diesem Rechner.</small></div>
+        <div class="l"><b data-i18n="apikey"></b><small data-i18n="apikey.hint"></small></div>
         <div class="r">
           <input type="password" data-k="api_key" placeholder="gsk_…" autocomplete="off" spellcheck="false">
-          <button class="btn" id="test-key">Testen</button>
+          <button class="btn" id="test-key" data-i18n="test"></button>
         </div>
       </div>
       <div class="row" id="key-msg-row" style="display:none;min-height:0;padding:12px 24px"><span id="key-msg"></span></div>
     </div>
 
     <div class="card">
-      <h2>Diktat</h2>
+      <h2 data-i18n="dictation"></h2>
       <div class="row col">
         <div class="top">
-          <div class="l">
-            <b>Hotkey</b>
-            <small id="hk-hint">Am besten eine einzelne, selten genutzte Taste. Kombinationen wie Strg+Alt+Leertaste oder mit Super sind oft schon belegt (z. B. von Claude Desktop) und stehlen dann den Fokus.</small>
-          </div>
+          <div class="l"><b data-i18n="hotkey"></b><small data-i18n="hotkey.hint"></small></div>
           <div class="r" id="hk-box">
             <div class="keys" id="hk-keys"></div>
-            <button class="btn" id="hk-change">Ändern</button>
+            <button class="btn" id="hk-change" data-i18n="change"></button>
           </div>
         </div>
         <div class="presets" id="hk-presets"></div>
       </div>
       <div class="row">
-        <div class="l"><b>Verhalten</b><small>Halten = Push-to-talk. Umschalten = Drücken zum Starten und Stoppen.</small></div>
-        <div class="seg" data-seg="hotkey_mode"><button data-v="hold">Halten</button><button data-v="toggle">Umschalten</button></div>
+        <div class="l"><b data-i18n="behavior"></b></div>
+        <div class="seg" data-seg="hotkey_mode"><button data-v="hold" data-i18n="hold"></button><button data-v="toggle" data-i18n="toggle"></button></div>
       </div>
       <div class="row">
-        <div class="l"><b>Mikrofon</b><small>Standard folgt der Systemauswahl.</small></div>
-        <select data-k="input_device" id="mic-select"><option value="">Standard</option></select>
+        <div class="l"><b data-i18n="mic"></b></div>
+        <select data-k="input_device" id="mic-select"><option value="" data-i18n="mic.default"></option></select>
       </div>
       <div class="row">
-        <div class="l"><b>Sprache</b><small>Automatisch erkennt auch Deutsch/Englisch-Mix.</small></div>
+        <div class="l"><b data-i18n="dictlang"></b></div>
         <select data-k="language">
-          <option value="auto">Automatisch</option>
+          <option value="auto" data-i18n="lang.auto"></option>
           <option value="de">Deutsch</option>
-          <option value="en">Englisch</option>
-          <option value="fr">Französisch</option>
-          <option value="es">Spanisch</option>
-          <option value="it">Italienisch</option>
-          <option value="pt">Portugiesisch</option>
-          <option value="nl">Niederländisch</option>
-          <option value="pl">Polnisch</option>
-          <option value="tr">Türkisch</option>
+          <option value="en">English</option>
+          <option value="fr">Français</option>
+          <option value="es">Español</option>
+          <option value="it">Italiano</option>
+          <option value="pt">Português</option>
+          <option value="nl">Nederlands</option>
+          <option value="pl">Polski</option>
+          <option value="tr">Türkçe</option>
         </select>
       </div>
       <div class="row">
-        <div class="l"><b>Overlay anzeigen</b><small>Blase mit Maskottchen und Klang-Balken beim Diktieren.</small></div>
+        <div class="l"><b data-i18n="overlay"></b></div>
         <label class="switch"><input type="checkbox" data-k="overlay"><i></i></label>
       </div>
     </div>
 
     <div class="card">
-      <h2>System</h2>
+      <h2 data-i18n="system"></h2>
       <div id="checks"></div>
     </div>
   </section>
 
-  <!-- AUSGABE -->
+  <!-- OUTPUT -->
   <section id="tab-output">
-    <h1>Ausgabe</h1>
-    <p class="sub">Was mit dem fertigen Text passiert.</p>
+    <h1 data-i18n="nav.output"></h1>
+    <p class="sub" data-i18n="output.sub"></p>
     <div class="card">
       <div class="row">
-        <div class="l"><b>Automatisch einfügen</b><small>Text direkt am Cursor im aktiven Fenster einfügen.</small></div>
+        <div class="l"><b data-i18n="autoinsert"></b></div>
         <label class="switch"><input type="checkbox" data-k="auto_insert"><i></i></label>
       </div>
       <div class="row">
-        <div class="l"><b>Einfüge-Methode</b><small>Einfügen simuliert Strg+V. Tippen nutzt wtype und läuft nicht auf jedem Desktop.</small></div>
-        <div class="seg" data-seg="insert_method"><button data-v="paste">Einfügen</button><button data-v="type">Tippen</button></div>
+        <div class="l"><b data-i18n="method"></b></div>
+        <div class="seg" data-seg="insert_method"><button data-v="paste" data-i18n="paste"></button><button data-v="type" data-i18n="type"></button></div>
       </div>
       <div class="row">
-        <div class="l"><b>Einfüge-Kürzel</b><small>In Terminals meist Strg+Umschalt+V.</small></div>
-        <div class="seg" data-seg="paste_shortcut"><button data-v="ctrl+v">Strg+V</button><button data-v="ctrl+shift+v">Strg+Umschalt+V</button></div>
+        <div class="l"><b data-i18n="shortcut"></b></div>
+        <div class="seg" data-seg="paste_shortcut"><button data-v="ctrl+v">Ctrl+V</button><button data-v="ctrl+shift+v">Ctrl+Shift+V</button></div>
       </div>
       <div class="row">
-        <div class="l"><b>In Zwischenablage kopieren</b><small>Der Text bleibt nach dem Einfügen in der Zwischenablage.</small></div>
+        <div class="l"><b data-i18n="keepclip"></b><small data-i18n="keepclip.hint"></small></div>
         <label class="switch"><input type="checkbox" data-k="copy_to_clipboard"><i></i></label>
       </div>
     </div>
   </section>
 
-  <!-- MODI -->
+  <!-- MODES -->
   <section id="tab-modes">
-    <h1>Modi</h1>
-    <p class="sub">Wie der Rohtext nach der Erkennung aufbereitet wird.</p>
+    <h1 data-i18n="nav.modes"></h1>
+    <p class="sub" data-i18n="modes.sub"></p>
     <div class="card">
       <div class="row">
-        <div class="l"><b>Nachbearbeitung</b><small>Ein Groq-Sprachmodell setzt Satzzeichen und räumt den Text auf.</small></div>
+        <div class="l"><b data-i18n="cleanup"></b></div>
         <label class="switch"><input type="checkbox" data-k="cleanup"><i></i></label>
       </div>
       <div class="modes" id="modes"></div>
       <div class="row col" id="custom-wrap" style="display:none">
-        <div class="l"><b>Eigener Prompt</b><small>Wird an die Grundregeln angehängt. Beschreibe Stil und Format.</small></div>
-        <textarea data-k="custom_prompt" spellcheck="false" placeholder="z. B. Formuliere als Jira-Ticket mit Titel und Akzeptanzkriterien."></textarea>
+        <div class="l"><b data-i18n="customprompt"></b></div>
+        <textarea data-k="custom_prompt" spellcheck="false" data-i18n-ph="customprompt.ph"></textarea>
       </div>
     </div>
   </section>
 
-  <!-- WÖRTERBUCH -->
+  <!-- DICTIONARY -->
   <section id="tab-dict">
-    <h1>Wörterbuch</h1>
-    <p class="sub">Voiceo lernt aus deinen Korrekturen. Namen, Marken und Fachbegriffe landen hier.</p>
+    <h1 data-i18n="nav.dict"></h1>
+    <p class="sub" data-i18n="dict.sub"></p>
 
     <div class="card">
-      <h2>Lernen</h2>
+      <h2 data-i18n="learning"></h2>
       <div class="row">
-        <div class="l"><b>Automatisch lernen</b><small id="al-hint">Voiceo beobachtet das Textfeld nach dem Einfügen. Änderst du Wörter und sendest ab (Enter), lernt es die Korrekturen. Braucht Bedienungshilfen (AT-SPI).</small></div>
+        <div class="l"><b data-i18n="autolearn"></b><small data-i18n="autolearn.hint"></small></div>
         <label class="switch"><input type="checkbox" data-k="auto_learn"><i></i></label>
       </div>
-      <div class="row">
-        <div class="l"><b>Lern-Taste</b><small>Alternative: korrigierten Text markieren und diese Taste drücken. Leer = aus.</small></div>
-        <div class="r" id="lk-box"><div class="keys" id="lk-keys"></div><button class="btn" id="lk-change">Ändern</button><button class="btn small" id="lk-clear">Aus</button></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Gelernte Korrekturen</h2>
-      <div id="learned"></div>
-      <div class="row">
-        <div class="pair" style="width:100%">
-          <input type="text" id="l-from" placeholder="falsch, z. B. clod">
-          <span class="arrow">→</span>
-          <input type="text" id="l-to" placeholder="richtig, z. B. Claude">
-          <button class="btn primary" id="l-add">Hinzufügen</button>
+      <div class="row col">
+        <div class="top">
+          <div class="l"><b data-i18n="learnkey"></b><small data-i18n="learnkey.hint"></small></div>
+          <div class="r" id="lk-box"><div class="keys" id="lk-keys"></div><button class="btn" id="lk-change" data-i18n="change"></button><button class="btn small" id="lk-clear" data-i18n="off"></button></div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h2>Eigene Begriffe</h2>
+      <h2 data-i18n="learned"></h2>
+      <div id="learned"></div>
+      <div class="row">
+        <div class="pair" style="width:100%">
+          <input type="text" id="l-from" data-i18n-ph="wrong">
+          <span class="arrow">→</span>
+          <input type="text" id="l-to" data-i18n-ph="right">
+          <button class="btn primary" id="l-add" data-i18n="add"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="terms"></h2>
       <div class="row col">
-        <div class="l"><b>Ein Begriff pro Zeile</b><small>Fließt in Whisper und in die Nachbearbeitung ein.</small></div>
+        <div class="l"><small data-i18n="terms.hint"></small></div>
         <textarea data-dict spellcheck="false" placeholder="Voiceo&#10;Groq&#10;Kubernetes"></textarea>
       </div>
     </div>
   </section>
 
-  <!-- VERLAUF -->
+  <!-- HISTORY -->
   <section id="tab-history">
-    <h1>Verlauf</h1>
-    <p class="sub">Deine letzten Diktate. Nur lokal gespeichert.</p>
-    <div style="margin-bottom:18px"><button class="btn small" id="hist-clear">Verlauf löschen</button></div>
+    <h1 data-i18n="nav.history"></h1>
+    <p class="sub" data-i18n="history.sub"></p>
+    <div style="margin-bottom:18px"><button class="btn small" id="hist-clear" data-i18n="clear"></button></div>
     <div class="card" id="hist-list"></div>
   </section>
 
-  <!-- ERWEITERT -->
+  <!-- ADVANCED -->
   <section id="tab-advanced">
-    <h1>Erweitert</h1>
-    <p class="sub">Modelle und Feintuning. Die Standardwerte sind auf beste Qualität eingestellt.</p>
+    <h1 data-i18n="nav.advanced"></h1>
+    <p class="sub" data-i18n="advanced.sub"></p>
 
     <div class="card">
-      <h2>Darstellung</h2>
+      <h2 data-i18n="appearance"></h2>
       <div class="row">
-        <div class="l"><b>Design</b><small>System folgt deinem Desktop.</small></div>
-        <select data-k="theme"><option value="system">System</option><option value="dark">Dunkel</option><option value="light">Hell</option></select>
+        <div class="l"><b data-i18n="theme"></b></div>
+        <select data-k="theme"><option value="system" data-i18n="theme.system"></option><option value="dark" data-i18n="theme.dark"></option><option value="light" data-i18n="theme.light"></option></select>
+      </div>
+      <div class="row">
+        <div class="l"><b data-i18n="font"></b></div>
+        <select data-k="font"><option value="lexend" data-i18n="font.lexend"></option><option value="anthropic" data-i18n="font.anthropic"></option><option value="system" data-i18n="font.system"></option></select>
+      </div>
+      <div class="row">
+        <div class="l"><b data-i18n="uilang"></b></div>
+        <select data-k="ui_lang"><option value="de">Deutsch</option><option value="en">English</option></select>
       </div>
     </div>
 
     <div class="card">
-      <h2>Modelle</h2>
+      <h2 data-i18n="models"></h2>
       <div class="row">
-        <div class="l"><b>Transkription</b><small>whisper-large-v3 = beste Qualität, -turbo = schneller.</small></div>
+        <div class="l"><b data-i18n="stt"></b></div>
         <input type="text" data-k="stt_model" data-opts="whisper-large-v3,whisper-large-v3-turbo" spellcheck="false">
       </div>
       <div class="row">
-        <div class="l"><b>Nachbearbeitung</b><small>Chat-Modell für Cleanup und Lernen. Fehlt es, wählt Voiceo automatisch ein anderes.</small></div>
+        <div class="l"><b data-i18n="llm"></b></div>
         <input type="text" data-k="llm_model" data-opts="openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b" spellcheck="false">
       </div>
     </div>
 
     <div class="card">
-      <h2>Audio-Aufbereitung</h2>
-      <div class="row">
-        <div class="l"><b>Rumpeln filtern</b><small>80-Hz-Hochpass entfernt Trittschall und Tischgeräusche.</small></div>
-        <label class="switch"><input type="checkbox" data-k="highpass"><i></i></label>
-      </div>
-      <div class="row">
-        <div class="l"><b>Lautstärke angleichen</b><small>Hebt leise Aufnahmen auf einen guten Pegel für Whisper.</small></div>
-        <label class="switch"><input type="checkbox" data-k="normalize"><i></i></label>
-      </div>
-      <div class="row">
-        <div class="l"><b>Stille am Rand kürzen</b><small>Weniger Halluzinationen, kleinerer Upload.</small></div>
-        <label class="switch"><input type="checkbox" data-k="trim_silence"><i></i></label>
-      </div>
-      <div class="row">
-        <div class="l"><b>Stille-Schwelle</b><small>Aufnahmen darunter werden verworfen.</small></div>
-        <input type="number" data-k="silence_threshold" min="0" max="0.2" step="0.005">
-      </div>
-      <div class="row">
-        <div class="l"><b>Maximale Länge</b><small>In Sekunden.</small></div>
-        <input type="number" data-k="max_seconds" min="5" max="1800" step="5">
-      </div>
+      <h2 data-i18n="audio"></h2>
+      <div class="row"><div class="l"><b data-i18n="highpass"></b></div><label class="switch"><input type="checkbox" data-k="highpass"><i></i></label></div>
+      <div class="row"><div class="l"><b data-i18n="normalize"></b></div><label class="switch"><input type="checkbox" data-k="normalize"><i></i></label></div>
+      <div class="row"><div class="l"><b data-i18n="trim"></b></div><label class="switch"><input type="checkbox" data-k="trim_silence"><i></i></label></div>
+      <div class="row"><div class="l"><b data-i18n="silence"></b></div><input type="number" data-k="silence_threshold" min="0" max="0.2" step="0.005"></div>
+      <div class="row"><div class="l"><b data-i18n="maxlen"></b></div><input type="number" data-k="max_seconds" min="5" max="1800" step="5"></div>
     </div>
 
     <div class="card">
-      <h2>Qualität</h2>
-      <div class="row">
-        <div class="l"><b>Whisper-Temperatur</b><small>0 = deterministisch, empfohlen.</small></div>
-        <input type="number" data-k="stt_temperature" min="0" max="1" step="0.1">
-      </div>
-      <div class="row">
-        <div class="l"><b>Cleanup-Temperatur</b><small>Niedrig = textnah. Höher = freier formuliert.</small></div>
-        <input type="number" data-k="llm_temperature" min="0" max="1" step="0.1">
-      </div>
-      <div class="row">
-        <div class="l"><b>Cleanup ab Wortanzahl</b><small>Kürzere Diktate bleiben roh und sind schneller.</small></div>
-        <input type="number" data-k="min_words_cleanup" min="0" max="50" step="1">
-      </div>
+      <h2 data-i18n="quality"></h2>
+      <div class="row"><div class="l"><b data-i18n="sttTemp"></b></div><input type="number" data-k="stt_temperature" min="0" max="1" step="0.1"></div>
+      <div class="row"><div class="l"><b data-i18n="llmTemp"></b></div><input type="number" data-k="llm_temperature" min="0" max="1" step="0.1"></div>
+      <div class="row"><div class="l"><b data-i18n="minWords"></b></div><input type="number" data-k="min_words_cleanup" min="0" max="50" step="1"></div>
       <div class="row col">
-        <div class="l"><b>Whisper-Kontext</b><small>Freitext als Stilvorlage, z. B. „Gespräch über Softwareentwicklung auf Deutsch und Englisch.“</small></div>
+        <div class="l"><b data-i18n="whisperctx"></b></div>
         <input type="text" class="wide" data-k="whisper_prompt" spellcheck="false">
       </div>
-      <div class="row">
-        <div class="l"><b>Verlauf-Einträge</b></div>
-        <input type="number" data-k="history_limit" min="1" max="1000" step="10">
-      </div>
+      <div class="row"><div class="l"><b data-i18n="histsize"></b></div><input type="number" data-k="history_limit" min="1" max="1000" step="10"></div>
     </div>
   </section>
 </main>
 
 <div id="toast"></div>
+<script src="i18n.js"></script>
 <script src="mascot.js"></script>
 <script src="app.js"></script>
 </body>

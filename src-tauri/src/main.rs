@@ -448,7 +448,7 @@ fn test_api(state: State<AppState>, key: String) -> Result<String, String> {
     let http = state.http.clone();
     let key = key.trim().to_string();
     let n = off_runtime(move || groq::check_key(&http, &key))?;
-    Ok(format!("Verbunden, {n} Modelle verfuegbar"))
+    Ok(n.to_string())
 }
 
 #[tauri::command(async)]
@@ -591,7 +591,7 @@ fn main() {
             let quit = MenuItem::with_id(app, "quit", "Beenden", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
             TrayIconBuilder::new()
-                .icon(app.default_window_icon().cloned().ok_or("icon")?)
+                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .tooltip("Voiceo")
                 .menu(&menu)
                 .on_menu_event(|app, ev| match ev.id.as_ref() {

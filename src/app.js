@@ -3,15 +3,7 @@ const { listen } = window.__TAURI__.event;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
-const MODES = [
-  ["raw", "Roh", "Nur Whisper, keine Nachbearbeitung."],
-  ["clean", "Sauber", "Satzzeichen, Füllwörter weg, textnah."],
-  ["message", "Nachricht", "Locker und kurz, wie im Chat."],
-  ["email", "E-Mail", "Höflich und strukturiert."],
-  ["prompt", "Prompt", "Klare Anweisung für KI oder Entwickler."],
-  ["notes", "Notizen", "Stichpunkte."],
-  ["custom", "Eigener", "Dein eigener Prompt."],
-];
+const MODES = ["raw", "clean", "message", "email", "prompt", "notes", "custom"];
 const PRESETS = [[97], [100], [127], [119], [70]];
 const RISKY = (c) => c.includes(125) || c.includes(126) || (c.includes(56) && c.includes(57)) || (c.includes(29) && c.includes(56) && c.length > 2);
 
@@ -19,17 +11,39 @@ let S = {};
 let saveTimer = null;
 const refreshers = [];            // custom controls re-sync after settings load
 
+// ---------- i18n ----------
+function applyI18n() {
+  document.documentElement.lang = window.LANG;
+  $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  $$("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+  $$("#lang-switch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === window.LANG));
+  placeSegs();
+}
+function setLang(l) {
+  window.LANG = l; S.ui_lang = l;
+  applyI18n();
+  $$("select[data-k]").forEach((s) => s.rebuild && s.rebuild());
+  renderModes(); renderHotkey(); refreshStatus();
+  invoke("get_learned").then(renderLearned);
+  if ($("#tab-history").classList.contains("active")) renderHistory();
+  queueSave();
+}
+$$("#lang-switch button").forEach((b) => b.addEventListener("click", () => {
+  setLang(b.dataset.lang);
+  const sel = $("select[data-k=ui_lang]"); if (sel) { sel.value = b.dataset.lang; sel.rebuild && sel.rebuild(); }
+}));
+
 // ---------- tiny helpers ----------
 function toast(msg) {
-  const t = $("#toast");
-  t.textContent = msg; t.classList.add("on");
-  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 1500);
+  const el = $("#toast");
+  el.textContent = msg; el.classList.add("on");
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("on"), 1500);
 }
 function queueSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    try { await invoke("save_settings", { settings: S }); toast("Gespeichert"); mascot.react("done"); refreshStatus(); }
-    catch (e) { toast("Fehler: " + e); }
+    try { await invoke("save_settings", { settings: S }); toast(t("saved")); mascot.react("done"); refreshStatus(); }
+    catch (e) { toast(t("error") + ": " + e); }
   }, 350);
 }
 document.addEventListener("pointerdown", (e) => {
@@ -41,18 +55,19 @@ document.addEventListener("pointerdown", (e) => {
   b.appendChild(s); setTimeout(() => s.remove(), 650);
 });
 
-// ---------- theme ----------
+// ---------- theme + font ----------
 function applyTheme() {
-  const t = S.theme || "system";
-  const light = t === "light" || (t === "system" && matchMedia("(prefers-color-scheme: light)").matches);
+  const th = S.theme || "system";
+  const light = th === "light" || (th === "system" && matchMedia("(prefers-color-scheme: light)").matches);
   document.documentElement.dataset.theme = light ? "light" : "dark";
+  document.documentElement.dataset.font = S.font || "lexend";
 }
 matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTheme);
 
 // ---------- sidebar mascot ----------
 const mascot = (() => {
   const cv = $("#logo"), ctx = cv.getContext("2d");
-  const dpr = 2; ctx.scale(dpr, dpr);
+  ctx.scale(2, 2);
   let state = "idle", until = 0, bounce = 0, look = [0, 0];
   addEventListener("pointermove", (e) => {
     const r = cv.getBoundingClientRect();
@@ -61,20 +76,28 @@ const mascot = (() => {
     look = [(dx / d) * k, (dy / d) * k * 0.7];
   });
   $("#brand").addEventListener("click", () => api.react("done", 1100, true));
-  const api = {
-    react(s, ms = 900, hop = false) { state = s; until = performance.now() + ms; if (hop) bounce = 1; },
-  };
-  (function loop(t) {
-    if (state !== "idle" && t > until) state = "idle";
+  const api = { react(s, ms = 900, hop = false) { state = s; until = performance.now() + ms; if (hop) bounce = 1; } };
+  (function loop(now) {
+    if (state !== "idle" && now > until) state = "idle";
     bounce *= 0.9;
     ctx.clearRect(0, 0, 62, 62);
-    window.Voi.draw(ctx, { x: 31, y: 36 - Math.sin(bounce * 7) * bounce * 7, s: 0.62, state, t, level: 0, look });
+    window.Voi.draw(ctx, { x: 31, y: 36 - Math.sin(bounce * 7) * bounce * 7, s: 0.62, state, t: now, level: 0, look });
     requestAnimationFrame(loop);
   })(0);
   return api;
 })();
 
 // ---------- custom controls ----------
+function closeAll() { $$(".sel.open").forEach((x) => { x.classList.remove("open"); x.closest(".card")?.classList.remove("raise"); }); }
+function openSel(wrap, menu) {
+  closeAll();
+  wrap.classList.add("open");
+  wrap.closest(".card")?.classList.add("raise");
+  // flip upwards when there is not enough room below
+  menu.classList.remove("up");
+  const r = wrap.getBoundingClientRect();
+  if (innerHeight - r.bottom < Math.min(menu.scrollHeight, 280) + 24 && r.top > innerHeight - r.bottom) menu.classList.add("up");
+}
 function enhanceSelect(native) {
   const wrap = document.createElement("div");
   wrap.className = "sel";
@@ -85,23 +108,23 @@ function enhanceSelect(native) {
   wrap.append(btn, menu);
   native.style.display = "none";
   native.after(wrap);
-
-  const build = () => {
-    menu.innerHTML = "";
-    [...native.options].forEach((o) => {
-      const d = document.createElement("div");
-      d.textContent = o.textContent; d.dataset.v = o.value;
-      d.onclick = () => { native.value = o.value; native.dispatchEvent(new Event("input")); sync(); wrap.classList.remove("open"); };
-      menu.appendChild(d);
-    });
-    sync();
-  };
   const sync = () => {
     const o = [...native.options].find((x) => x.value === native.value) || native.options[0];
     btn.textContent = o ? o.textContent : "";
     $$("div", menu).forEach((d) => d.classList.toggle("on", d.dataset.v === native.value));
   };
-  btn.onclick = (e) => { e.stopPropagation(); $$(".sel.open").forEach((x) => x !== wrap && x.classList.remove("open")); wrap.classList.toggle("open"); };
+  const build = () => {
+    menu.innerHTML = "";
+    [...native.options].forEach((o) => {
+      const d = document.createElement("div");
+      d.textContent = o.dataset.i18n ? t(o.dataset.i18n) : o.textContent; d.dataset.v = o.value;
+      if (o.dataset.i18n) o.textContent = d.textContent;
+      d.onclick = () => { native.value = o.value; native.dispatchEvent(new Event("input")); sync(); closeAll(); };
+      menu.appendChild(d);
+    });
+    sync();
+  };
+  btn.onclick = (e) => { e.stopPropagation(); wrap.classList.contains("open") ? closeAll() : openSel(wrap, menu); };
   native.rebuild = build;
   build();
   refreshers.push(sync);
@@ -112,16 +135,15 @@ function enhanceCombo(input) {
   wrap.className = "sel combo";
   input.before(wrap); wrap.appendChild(input);
   const menu = document.createElement("div"); menu.className = "menu"; wrap.appendChild(menu);
+  const mark = () => $$("div", menu).forEach((d) => d.classList.toggle("on", d.textContent === input.value));
   opts.forEach((v) => {
     const d = document.createElement("div"); d.textContent = v;
-    d.onclick = () => { input.value = v; input.dispatchEvent(new Event("input")); wrap.classList.remove("open"); mark(); };
+    d.onclick = () => { input.value = v; input.dispatchEvent(new Event("input")); closeAll(); mark(); };
     menu.appendChild(d);
   });
-  const mark = () => $$("div", menu).forEach((d) => d.classList.toggle("on", d.textContent === input.value));
-  input.addEventListener("focus", () => { mark(); wrap.classList.add("open"); });
+  input.addEventListener("focus", () => { mark(); openSel(wrap, menu); });
   input.addEventListener("input", mark);
   wrap.addEventListener("click", (e) => e.stopPropagation());
-  wrap.addEventListener("mousedown", (e) => { if (e.target === wrap) { wrap.classList.toggle("open"); } });
   refreshers.push(mark);
 }
 function enhanceNumber(input) {
@@ -137,20 +159,20 @@ function enhanceNumber(input) {
   };
   input.before(wrap);
   wrap.append(mk("−", -1), input, mk("+", 1));
-  input.style.width = "";
 }
-document.addEventListener("click", () => $$(".sel.open").forEach((x) => x.classList.remove("open")));
-addEventListener("keydown", (e) => { if (e.key === "Escape") $$(".sel.open").forEach((x) => x.classList.remove("open")); });
+document.addEventListener("click", closeAll);
+addEventListener("keydown", (e) => { if (e.key === "Escape") closeAll(); });
 
 function sliderFor(seg) {
   const thumb = document.createElement("div"); thumb.className = "thumb"; seg.prepend(thumb);
-  const place = () => {
+  seg.place = () => {
     const on = $("button.on", seg);
     if (!on) return;
     thumb.style.width = on.offsetWidth + "px"; thumb.style.transform = `translateX(${on.offsetLeft - 3}px)`;
   };
-  seg.place = place; return place;
+  return seg.place;
 }
+function placeSegs() { requestAnimationFrame(() => $$(".seg").forEach((s) => s.place && s.place())); }
 
 // ---------- binding ----------
 function bind() {
@@ -166,7 +188,8 @@ function bind() {
       else if (el.type === "number") S[k] = parseFloat(el.value) || 0;
       else S[k] = el.value;
       if (k === "mode" || k === "cleanup") renderModes();
-      if (k === "theme") applyTheme();
+      if (k === "theme" || k === "font") applyTheme();
+      if (k === "ui_lang") { setLang(S[k]); return; }
       queueSave();
     });
   });
@@ -178,8 +201,8 @@ function bind() {
     const paint = () => { $$("button", seg).forEach((b) => b.classList.toggle("on", b.dataset.v === S[k])); place(); };
     paint();
     $$("button", seg).forEach((b) => b.addEventListener("click", () => { S[k] = b.dataset.v; paint(); queueSave(); }));
-    seg.paint = paint;
   });
+  const ls = $("#lang-switch"); sliderFor(ls); ls.place();
   const dict = $("[data-dict]");
   dict.value = (S.dictionary || []).join("\n");
   dict.addEventListener("input", () => { S.dictionary = dict.value.split("\n").map((x) => x.trim()).filter(Boolean); queueSave(); });
@@ -189,10 +212,10 @@ function bind() {
 function renderModes() {
   const box = $("#modes");
   box.innerHTML = "";
-  MODES.forEach(([id, name, desc]) => {
+  MODES.forEach((id) => {
     const b = document.createElement("button");
     b.className = "mode" + (S.mode === id ? " on" : "");
-    b.innerHTML = `<b>${name}</b><small>${desc}</small>`;
+    b.innerHTML = `<b>${t("mode." + id)}</b><small>${t("mode." + id + ".d")}</small>`;
     b.onclick = () => { S.mode = id; renderModes(); queueSave(); };
     box.appendChild(b);
   });
@@ -215,8 +238,7 @@ async function renderPresets() {
   }
   if (RISKY(S.hotkey || [])) {
     const w = document.createElement("div");
-    w.className = "warn";
-    w.textContent = "Diese Kombination kollidiert wahrscheinlich mit anderen Programmen. Wähle eine einzelne Taste.";
+    w.className = "warn"; w.textContent = t("hotkey.warn");
     box.appendChild(w);
   }
 }
@@ -224,13 +246,13 @@ async function renderHotkey() {
   renderPresets();
   for (const [key, id] of [["hotkey", "#hk-keys"], ["learn_hotkey", "#lk-keys"]]) {
     const labels = await invoke("key_labels", { codes: S[key] || [] });
-    $(id).innerHTML = labels.map((l) => `<kbd>${l}</kbd>`).join("") || "<kbd>aus</kbd>";
+    $(id).innerHTML = labels.map((l) => `<kbd>${l}</kbd>`).join("") || `<kbd>${t("off")}</kbd>`;
   }
 }
 function wireCapture(btn, box, keys, field) {
   $(btn).onclick = async () => {
     $(box).classList.add("capturing");
-    $(keys).innerHTML = "<kbd>Taste drücken…</kbd>";
+    $(keys).innerHTML = `<kbd>${t("press")}</kbd>`;
     $(btn).disabled = true;
     try {
       const codes = await invoke("capture_hotkey");
@@ -248,12 +270,12 @@ $("#lk-clear").onclick = () => { S.learn_hotkey = []; queueSave(); renderHotkey(
 // ---------- learned ----------
 function renderLearned(items) {
   const box = $("#learned");
-  if (!items.length) { box.innerHTML = '<div class="empty">Noch nichts gelernt. Korrigiere ein Wort nach einem Diktat.</div>'; return; }
+  if (!items.length) { box.innerHTML = `<div class="empty">${t("learned.empty")}</div>`; return; }
   box.innerHTML = "";
   items.forEach((it) => {
     const r = document.createElement("div");
     r.className = "row";
-    r.innerHTML = `<div class="l"><b></b><small>${it.count}× gelernt</small></div><button class="btn small">Entfernen</button>`;
+    r.innerHTML = `<div class="l"><b></b><small>${t("times", { n: it.count })}</small></div><button class="btn small">${t("remove")}</button>`;
     $("b", r).textContent = `${it.from}  →  ${it.to}`;
     $("button", r).onclick = async () => renderLearned(await invoke("delete_learned", { from: it.from }));
     box.appendChild(r);
@@ -269,8 +291,8 @@ $("#l-add").onclick = async () => {
 // ---------- api test ----------
 $("#test-key").onclick = async () => {
   const row = $("#key-msg-row"), msg = $("#key-msg");
-  row.style.display = ""; msg.className = "hint"; msg.textContent = "Teste…";
-  try { msg.textContent = await invoke("test_api", { key: S.api_key || "" }); msg.className = "msg-ok"; mascot.react("done", 1400, true); }
+  row.style.display = ""; msg.className = "hint"; msg.textContent = t("testing");
+  try { const n = await invoke("test_api", { key: S.api_key || "" }); msg.textContent = t("connected", { n }); msg.className = "msg-ok"; mascot.react("done", 1400, true); }
   catch (e) { msg.textContent = String(e); msg.className = "msg-bad"; mascot.react("error", 1600); }
 };
 
@@ -278,42 +300,42 @@ $("#test-key").onclick = async () => {
 async function refreshStatus() {
   const s = await invoke("system_status");
   const checks = [
-    [s.api_key, "Groq API-Key", s.api_key ? "Gesetzt" : "Fehlt. Oben eintragen."],
-    [s.keyboards > 0, "Globaler Hotkey", s.keyboards > 0 ? `${s.keyboards} Tastatur(en) erkannt` : "Kein Zugriff auf die Tastatur. Einmalige Einrichtung nötig."],
-    [s.wl_copy, "Zwischenablage (wl-copy)", s.wl_copy ? "Bereit" : "Paket wl-clipboard installieren."],
-    [s.uinput, "Einfügen (uinput)", s.uinput ? "Bereit" : "Kein Zugriff auf /dev/uinput. Einmalige Einrichtung nötig."],
-    [s.atspi, "Automatisches Lernen", s.atspi ? "Bereit (AT-SPI)" : "Nicht aktiv. python3-gobject und at-spi2-core nötig, oder Lern-Taste nutzen."],
+    [s.api_key, t("chk.key"), s.api_key ? t("chk.key.ok") : t("chk.key.bad")],
+    [s.keyboards > 0, t("chk.hotkey"), s.keyboards > 0 ? t("chk.hotkey.ok", { n: s.keyboards }) : t("chk.hotkey.bad")],
+    [s.wl_copy, t("chk.clip"), s.wl_copy ? t("chk.clip.ok") : t("chk.clip.bad")],
+    [s.uinput, t("chk.paste"), s.uinput ? t("chk.paste.ok") : t("chk.paste.bad")],
+    [s.atspi, t("chk.learn"), s.atspi ? t("chk.learn.ok") : t("chk.learn.bad")],
   ];
-  $("#checks").innerHTML = checks.map(([ok, t, d]) => `
-    <div class="check"><span class="dot ${ok ? "ok" : "bad"}"></span><div><b>${t}</b><small>${d}</small></div></div>`).join("")
-    + ((s.keyboards > 0 && s.uinput) ? "" : '<div class="check"><button class="btn primary" id="run-setup">Jetzt einrichten</button><small>Fragt einmal nach deinem Passwort. Kein Neustart nötig.</small></div>');
+  $("#checks").innerHTML = checks.map(([ok, name, d]) => `
+    <div class="check"><span class="dot ${ok ? "ok" : "bad"}"></span><div><b>${name}</b><small>${d}</small></div></div>`).join("")
+    + ((s.keyboards > 0 && s.uinput) ? "" : `<div class="check"><button class="btn primary" id="run-setup">${t("setup")}</button><small>${t("setup.hint")}</small></div>`);
   const rs = $("#run-setup");
   if (rs) rs.onclick = async () => {
-    rs.disabled = true; rs.textContent = "Richte ein…";
-    try { const ok = await invoke("run_setup"); toast(ok ? "Eingerichtet" : "Noch nicht bereit, bitte erneut versuchen"); }
+    rs.disabled = true; rs.textContent = t("setting-up");
+    try { const ok = await invoke("run_setup"); toast(ok ? t("setup.done") : t("setup.retry")); }
     catch (e) { toast(String(e)); }
     refreshStatus(); renderHotkey();
   };
   const core = checks.slice(0, 4).every((c) => c[0]);
   $("#mini-dot").className = "dot " + (core ? "ok" : "bad");
-  $("#mini-text").textContent = core ? "Bereit" : "Setup unvollständig";
+  $("#mini-text").textContent = core ? t("ready") : t("incomplete");
 }
 
 // ---------- history ----------
 async function renderHistory() {
   const items = await invoke("get_history");
   const list = $("#hist-list");
-  if (!items.length) { list.innerHTML = '<div class="empty">Noch keine Diktate.</div>'; return; }
+  if (!items.length) { list.innerHTML = `<div class="empty">${t("history.empty")}</div>`; return; }
   list.innerHTML = "";
   const esc = (x) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   items.forEach((it) => {
     const d = document.createElement("div");
     d.className = "hist";
-    const time = new Date(it.ts * 1000).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
-    d.innerHTML = `<div class="meta"><span>${time} · ${it.mode}</span><span>${(it.ms / 1000).toFixed(1)} s</span></div>
-      <p>${esc(it.text)}</p>${it.raw !== it.text ? `<p class="raw">Roh: ${esc(it.raw)}</p>` : ""}
-      <div class="acts"><button class="btn small">Kopieren</button></div>`;
-    $("button", d).onclick = () => { navigator.clipboard.writeText(it.text); toast("Kopiert"); };
+    const time = new Date(it.ts * 1000).toLocaleString(window.LANG === "de" ? "de-DE" : "en-GB", { dateStyle: "short", timeStyle: "short" });
+    d.innerHTML = `<div class="meta"><span>${time} · ${t("mode." + it.mode)}</span><span>${(it.ms / 1000).toFixed(1)} s</span></div>
+      <p>${esc(it.text)}</p>${it.raw !== it.text ? `<p class="raw">${t("raw")}: ${esc(it.raw)}</p>` : ""}
+      <div class="acts"><button class="btn small">${t("copy")}</button></div>`;
+    $("button", d).onclick = () => { navigator.clipboard.writeText(it.text); toast(t("copied")); };
     list.appendChild(d);
   });
 }
@@ -326,11 +348,12 @@ function moveIndicator() {
   ind.style.transform = `translateY(${b.offsetTop}px)`; ind.style.height = b.offsetHeight + "px";
 }
 $$("#nav button").forEach((b) => b.addEventListener("click", () => {
+  closeAll();
   $$("#nav button").forEach((x) => x.classList.toggle("active", x === b));
   $$("main section").forEach((s) => s.classList.toggle("active", s.id === "tab-" + b.dataset.tab));
   moveIndicator();
   $("main").scrollTo({ top: 0 });
-  requestAnimationFrame(() => $$("[data-seg]").forEach((s) => s.place && s.place()));
+  placeSegs();
   if (b.dataset.tab === "history") renderHistory();
   if (b.dataset.tab === "general") refreshStatus();
 }));
@@ -339,16 +362,18 @@ addEventListener("resize", moveIndicator);
 // ---------- init ----------
 (async () => {
   S = await invoke("get_settings");
+  window.LANG = S.ui_lang || "de";
   applyTheme();
+  applyI18n();
   try {
     const devices = await invoke("list_inputs");
     const sel = $("#mic-select");
     devices.forEach((n) => { const o = document.createElement("option"); o.value = n; o.textContent = n; sel.appendChild(o); });
   } catch (_) {}
-  bind(); renderModes(); renderHotkey(); refreshStatus(); moveIndicator();
+  bind(); applyI18n(); renderModes(); renderHotkey(); refreshStatus(); moveIndicator();
   renderLearned(await invoke("get_learned"));
   listen("voiceo://history", renderHistory);
   listen("voiceo://learned", async () => { renderLearned(await invoke("get_learned")); mascot.react("learned", 1600, true); });
   listen("voiceo://setup", () => { refreshStatus(); renderHotkey(); });
-  document.fonts?.ready.then(() => { moveIndicator(); $$("[data-seg]").forEach((s) => s.place && s.place()); });
+  document.fonts?.ready.then(() => { moveIndicator(); placeSegs(); });
 })();
