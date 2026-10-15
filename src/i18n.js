@@ -23,7 +23,7 @@ window.I18N = {
 
     "output.sub": "Was mit dem Text passiert.",
     "autoinsert": "Automatisch einfügen", "method": "Methode", "paste": "Einfügen", "type": "Tippen",
-    "shortcut": "Einfüge-Kürzel", "keepclip": "In Zwischenablage behalten", "keepclip.hint": "Aus = alter Inhalt bleibt.",
+    "shortcut": "Einfüge-Kürzel", "keepclip": "In Zwischenablage behalten", "keepclip.hint": "Aus = nach dem Einfügen gelöscht.",
 
     "modes.sub": "Wie der Text aufbereitet wird.",
     "cleanup": "Nachbearbeitung",
@@ -38,9 +38,8 @@ window.I18N = {
 
     "dict.sub": "Aus deinen Korrekturen gelernt.",
     "learning": "Lernen", "autolearn": "Automatisch lernen", "autolearn.hint": "Beobachtet das Feld nach dem Einfügen.",
-    "learnkey": "Lern-Taste", "learnkey.hint": "Text markieren, Tasten drücken. Esc = aus.", "learned": "Gelernte Korrekturen",
-    "learned.empty": "Noch nichts gelernt.", "times": "{n}× gelernt", "wrong": "falsch", "right": "richtig", "add": "Hinzufügen", "remove": "Entfernen",
-    "terms": "Eigene Begriffe", "terms.hint": "Ein Begriff pro Zeile",
+    "learnkey": "Lern-Taste", "learnkey.hint": "Text markieren, Tasten drücken. Esc = aus.", "learned": "Korrekturen & Begriffe",
+    "learned.empty": "Noch nichts gelernt.", "nomatch": "Keine Treffer.", "times": "{n}× gelernt", "wrong": "falsch (optional)", "right": "richtig / Begriff", "search": "Suchen…", "term": "Begriff", "add": "Hinzufügen", "remove": "Entfernen",
 
     "history.sub": "Letzte Diktate.", "clear": "Löschen", "history.empty": "Noch keine Diktate.", "copy": "Kopieren", "copied": "Kopiert", "raw": "Roh",
 
@@ -80,7 +79,7 @@ window.I18N = {
 
     "output.sub": "What happens to the text.",
     "autoinsert": "Insert automatically", "method": "Method", "paste": "Paste", "type": "Type",
-    "shortcut": "Paste shortcut", "keepclip": "Keep in clipboard", "keepclip.hint": "Off = old content stays.",
+    "shortcut": "Paste shortcut", "keepclip": "Keep in clipboard", "keepclip.hint": "Off = cleared after pasting.",
 
     "modes.sub": "How the text is polished.",
     "cleanup": "Cleanup",
@@ -95,9 +94,8 @@ window.I18N = {
 
     "dict.sub": "Learned from your corrections.",
     "learning": "Learning", "autolearn": "Learn automatically", "autolearn.hint": "Watches the field after pasting.",
-    "learnkey": "Learn key", "learnkey.hint": "Select text, press the keys. Esc = off.", "learned": "Learned corrections",
-    "learned.empty": "Nothing learned yet.", "times": "learned {n}×", "wrong": "wrong", "right": "right", "add": "Add", "remove": "Remove",
-    "terms": "Custom terms", "terms.hint": "One term per line",
+    "learnkey": "Learn key", "learnkey.hint": "Select text, press the keys. Esc = off.", "learned": "Corrections & terms",
+    "learned.empty": "Nothing learned yet.", "nomatch": "No matches.", "times": "learned {n}×", "wrong": "wrong (optional)", "right": "right / term", "search": "Search…", "term": "Term", "add": "Add", "remove": "Remove",
 
     "history.sub": "Recent dictations.", "clear": "Clear", "history.empty": "No dictations yet.", "copy": "Copy", "copied": "Copied", "raw": "Raw",
 

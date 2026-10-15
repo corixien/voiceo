@@ -227,7 +227,8 @@ pub fn cleanup(
         return Ok(None);
     };
     if !terms.is_empty() {
-        system.push_str(&format!("\nKnown names/terms (exact spelling): {}.", terms.join(", ")));
+        let list: Vec<&str> = terms.iter().take(80).map(String::as_str).collect();
+        system.push_str(&format!("\nKnown names/terms (exact spelling): {}.", list.join(", ")));
     }
     if !hints.is_empty() {
         let list: Vec<String> = hints.iter().map(|(h, t)| format!("\"{h}\" may be \"{t}\"")).collect();

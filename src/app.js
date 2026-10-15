@@ -14,7 +14,6 @@ function applyI18n() {
   document.documentElement.lang = window.LANG;
   $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
   $$("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
-  $$("#lang-switch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === window.LANG));
   placeSegs();
 }
 function setLang(l) {
@@ -26,11 +25,6 @@ function setLang(l) {
   if ($("#tab-history").classList.contains("active")) renderHistory();
   queueSave();
 }
-$$("#lang-switch button").forEach((b) => b.addEventListener("click", () => {
-  setLang(b.dataset.lang);
-  const sel = $("select[data-k=ui_lang]"); if (sel) { sel.value = b.dataset.lang; sel.rebuild && sel.rebuild(); }
-}));
-
 // ---------- tiny helpers ----------
 function toast(msg) {
   const el = $("#toast");
@@ -166,7 +160,7 @@ function sliderFor(seg) {
   seg.place = () => {
     const on = $("button.on", seg);
     if (!on) return;
-    thumb.style.width = on.offsetWidth + "px"; thumb.style.transform = `translateX(${on.offsetLeft - 3}px)`;
+    thumb.style.width = on.offsetWidth + "px"; thumb.style.transform = `translateX(${on.offsetLeft}px)`;
   };
   return seg.place;
 }
@@ -200,10 +194,6 @@ function bind() {
     paint();
     $$("button", seg).forEach((b) => b.addEventListener("click", () => { S[k] = b.dataset.v; paint(); queueSave(); }));
   });
-  const ls = $("#lang-switch"); sliderFor(ls); ls.place();
-  const dict = $("[data-dict]");
-  dict.value = (S.dictionary || []).join("\n");
-  dict.addEventListener("input", () => { S.dictionary = dict.value.split("\n").map((x) => x.trim()).filter(Boolean); queueSave(); });
 }
 
 // ---------- modes ----------
@@ -251,26 +241,36 @@ async function renderHotkey() {
   }
 }
 
-// ---------- learned ----------
+// ---------- learned corrections + terms ----------
+let learnedItems = [];
 function renderLearned(items) {
+  if (items) learnedItems = items;
   const box = $("#learned");
-  if (!items.length) { box.innerHTML = `<div class="empty">${t("learned.empty")}</div>`; return; }
+  const q = ($("#l-search").value || "").trim().toLowerCase();
+  const list = learnedItems.filter((it) => !q || it.from.toLowerCase().includes(q) || it.to.toLowerCase().includes(q));
+  if (!learnedItems.length) { box.innerHTML = `<div class="empty">${t("learned.empty")}</div>`; return; }
+  if (!list.length) { box.innerHTML = `<div class="empty">${t("nomatch")}</div>`; return; }
   box.innerHTML = "";
-  items.forEach((it) => {
+  [...list].reverse().forEach((it) => {
     const r = document.createElement("div");
     r.className = "row";
-    r.innerHTML = `<div class="l"><b></b><small>${t("times", { n: it.count })}</small></div><button class="btn small">${t("remove")}</button>`;
-    $("b", r).textContent = `${it.from}  →  ${it.to}`;
-    $("button", r).onclick = async () => renderLearned(await invoke("delete_learned", { from: it.from }));
+    const isTerm = !it.from;
+    r.innerHTML = `<div class="l"><b></b>${isTerm ? "" : `<small>${t("times", { n: it.count })}</small>`}</div><button class="btn small">${t("remove")}</button>`;
+    $("b", r).textContent = isTerm ? it.to : `${it.from}  →  ${it.to}`;
+    if (isTerm) { const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = t("term"); $("b", r).appendChild(tag); }
+    $("button", r).onclick = async () => renderLearned(await invoke("delete_learned", { from: it.from, to: it.to }));
     box.appendChild(r);
   });
 }
-$("#l-add").onclick = async () => {
+$("#l-search").addEventListener("input", () => renderLearned());
+async function addLearned() {
   const from = $("#l-from").value.trim(), to = $("#l-to").value.trim();
-  if (!from || !to) return;
+  if (!to) return;
   renderLearned(await invoke("add_learned", { from, to }));
-  $("#l-from").value = ""; $("#l-to").value = ""; mascot.react("learned", 1400, true);
-};
+  $("#l-from").value = ""; $("#l-to").value = ""; $("#l-search").value = ""; mascot.react("learned", 1400, true);
+}
+$("#l-add").onclick = addLearned;
+["#l-from", "#l-to"].forEach((id) => $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") addLearned(); }));
 
 // ---------- api test ----------
 $("#test-key").onclick = async () => {

@@ -22,16 +22,24 @@ pub fn save(path: &Path, items: &[Learned]) {
     }
 }
 
+/// Adds a correction (from -> to) or, with an empty `from`, a plain term the LLM should watch for.
 pub fn add(items: &mut Vec<Learned>, from: &str, to: &str) {
-    if from.trim().is_empty() || to.trim().is_empty() || from == to {
+    let (from, to) = (from.trim(), to.trim());
+    if to.is_empty() || from == to {
         return;
     }
-    if let Some(it) = items.iter_mut().find(|i| i.from.eq_ignore_ascii_case(from) && i.from == from) {
-        it.to = to.to_string();
+    if let Some(it) = items.iter_mut().find(|i| i.from == from && i.to == to) {
         it.count += 1;
-    } else {
-        items.push(Learned { from: from.to_string(), to: to.to_string(), count: 1 });
+        return;
     }
+    if !from.is_empty() {
+        if let Some(it) = items.iter_mut().find(|i| i.from == from) {
+            it.to = to.to_string();
+            it.count += 1;
+            return;
+        }
+    }
+    items.push(Learned { from: from.to_string(), to: to.to_string(), count: 1 });
 }
 
 fn tokens(s: &str) -> Vec<String> {
@@ -120,7 +128,7 @@ fn replace_ci(text: &str, from: &str, to: &str) -> String {
 }
 
 pub fn apply(text: &str, items: &[Learned]) -> String {
-    let mut sorted: Vec<&Learned> = items.iter().collect();
+    let mut sorted: Vec<&Learned> = items.iter().filter(|i| !i.from.is_empty()).collect();
     sorted.sort_by_key(|i| std::cmp::Reverse(i.from.chars().count()));
     let mut out = text.to_string();
     for it in sorted {

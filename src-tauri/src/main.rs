@@ -275,9 +275,13 @@ fn run_pipeline(
     }
     let wav = audio::to_wav(&pcm)?;
     let learned = st.learned.lock().unwrap().clone();
-    let mut terms: Vec<String> = s.dictionary.clone();
-    terms.extend(learned.iter().map(|l| l.to.clone()));
-    terms.dedup();
+    let mut terms: Vec<String> = vec![];
+    for t in learned.iter().map(|l| l.to.clone()).chain(s.dictionary.iter().cloned()) {
+        if !terms.contains(&t) {
+            terms.push(t);
+        }
+    }
+    terms.reverse(); // newest first: the prompt budget favors recent terms
     let raw = groq::transcribe(&st.http, &s, wav, &terms)?;
     let lower = raw.to_lowercase();
     if raw.is_empty() || groq::is_prompt_echo(&raw) || (raw.chars().count() < 90 && HALLUCINATIONS.iter().any(|h| lower.contains(h))) {
@@ -418,9 +422,9 @@ fn add_learned(state: State<AppState>, from: String, to: String) -> Vec<Learned>
 }
 
 #[tauri::command]
-fn delete_learned(state: State<AppState>, from: String) -> Vec<Learned> {
+fn delete_learned(state: State<AppState>, from: String, to: String) -> Vec<Learned> {
     let mut l = state.learned.lock().unwrap();
-    l.retain(|x| x.from != from);
+    l.retain(|x| !(x.from == from && x.to == to));
     learn::save(&state.learned_path(), &l);
     l.clone()
 }
@@ -533,7 +537,16 @@ fn main() {
                 Err(e) => (None, Some(e)),
             };
             let capture: hotkey::Capture = Arc::new(Mutex::new(None));
-            let learned = learn::load(&dir.join("learned.json"));
+            let mut learned = learn::load(&dir.join("learned.json"));
+            let mut settings = settings;
+            if !settings.dictionary.is_empty() {
+                // the old "custom terms" list now lives in the corrections list as plain terms
+                for term in std::mem::take(&mut settings.dictionary) {
+                    learn::add(&mut learned, "", &term);
+                }
+                learn::save(&dir.join("learned.json"), &learned);
+                let _ = settings.save(&dir.join("settings.json"));
+            }
             app.manage(AppState {
                 settings: Mutex::new(settings),
                 dir,

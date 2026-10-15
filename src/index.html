@@ -22,7 +22,6 @@
     <button data-tab="advanced"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span data-i18n="nav.advanced"></span></button>
   </nav>
   <div class="spacer"></div>
-  <div class="seg mini" id="lang-switch"><button data-lang="de">DE</button><button data-lang="en">EN</button></div>
   <div class="status-mini"><span class="dot" id="mini-dot"></span><span id="mini-text"></span></div>
 </aside>
 
@@ -139,7 +138,6 @@
 
     <div class="card">
       <h2 data-i18n="learned"></h2>
-      <div id="learned"></div>
       <div class="row">
         <div class="pair" style="width:100%">
           <input type="text" id="l-from" data-i18n-ph="wrong">
@@ -148,14 +146,10 @@
           <button class="btn primary" id="l-add" data-i18n="add"></button>
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <h2 data-i18n="terms"></h2>
-      <div class="row col">
-        <div class="l"><small data-i18n="terms.hint"></small></div>
-        <textarea data-dict spellcheck="false" placeholder="Voiceo&#10;Groq&#10;Kubernetes"></textarea>
+      <div class="row search-row">
+        <input type="text" class="wide" id="l-search" data-i18n-ph="search" spellcheck="false">
       </div>
+      <div id="learned" class="scroll-list"></div>
     </div>
   </section>
 

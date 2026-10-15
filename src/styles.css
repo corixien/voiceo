@@ -295,3 +295,9 @@ kbd { padding: 3px 9px; font-size: 12px; white-space: nowrap; }
 .hk .top { width: 100%; }
 .hk.capturing kbd { border-color: var(--accent); color: var(--accent); animation: pulse 1s ease-in-out infinite; }
 .hk .presets { margin-top: 0; }
+
+.search-row { padding-top: 6px; padding-bottom: 14px; }
+.scroll-list { max-height: 380px; overflow-y: auto; border-top: 1px solid var(--line); }
+.scroll-list .row { min-height: 56px; padding-top: 12px; padding-bottom: 12px; }
+.scroll-list .row + .row { border-top: 1px solid var(--line); }
+.tag { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); margin-left: 8px; vertical-align: 1px; }
