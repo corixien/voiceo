@@ -7,7 +7,7 @@
   @font-face { font-family: "Lexend Deca"; font-weight: 400; src: url("fonts/lexend-deca-400.woff2") format("woff2"); }
   @font-face { font-family: "Lexend Deca"; font-weight: 500 700; src: url("fonts/lexend-deca-700.woff2") format("woff2"); }
   html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; }
-  canvas { display: block; width: 380px; height: 210px; }
+  canvas { display: block; }
 </style>
 </head>
 <body>
@@ -15,7 +15,7 @@
 <script src="mascot.js"></script>
 <script>
 (() => {
-  const W = 380, H = 210;
+  const W = 380, H = 210, K = 0.82;               // K scales the whole overlay down
   const BW = 236, BH = 62, BR = 22, GAP = 30;           // bubble
   const REST_TOP = H - GAP - BH, CX = W / 2;
   const HIDDEN = BH + GAP + 14;                         // offset that parks the bubble below the edge
@@ -24,9 +24,10 @@
 
   const canvas = document.getElementById("c");
   const dpr = Math.max(1, window.devicePixelRatio || 1);
-  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.width = Math.round(W * K * dpr); canvas.height = Math.round(H * K * dpr);
+  canvas.style.width = Math.round(W * K) + "px"; canvas.style.height = Math.round(H * K) + "px";
   const ctx = canvas.getContext("2d");
-  ctx.scale(dpr, dpr);
+  ctx.setTransform(dpr * K, 0, 0, dpr * K, 0, 0);
 
   let state = "idle", message = "", running = false, last = 0;
   let off = HIDDEN, vel = 0, shown = false, wasClear = false;      // bubble vertical offset spring

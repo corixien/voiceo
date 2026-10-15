@@ -37,6 +37,27 @@ pub fn check_key(http: &Client, key: &str) -> Result<usize, String> {
     Ok(v["data"].as_array().map(|a| a.len()).unwrap_or(0))
 }
 
+/// Neutral, informal, bilingual style sample. No questions or greetings: on near-silence Whisper
+/// tends to echo the prompt, and `is_prompt_echo` drops such output.
+pub const PRIMER: &str = "Ja, also ich hab das gestern mal ausprobiert, und es funktioniert eigentlich ganz gut. Danach muss ich noch das Deployment checken, weil die Pipeline manchmal hängt. Okay, passt.";
+
+pub fn is_prompt_echo(text: &str) -> bool {
+    let norm = |s: &str| -> Vec<String> {
+        s.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.len() > 2)
+            .map(String::from)
+            .collect()
+    };
+    let t = norm(text);
+    if t.is_empty() {
+        return false;
+    }
+    let p = norm(PRIMER);
+    let hits = t.iter().filter(|w| p.contains(w)).count();
+    t.len() >= 3 && hits * 10 >= t.len() * 7
+}
+
 /// Whisper prompt: vocabulary hint plus a punctuated bilingual primer (steers punctuation style).
 /// Whisper only reads the last ~224 tokens, so the primer goes last.
 fn whisper_prompt(s: &Settings, terms: &[String]) -> String {
@@ -57,11 +78,30 @@ fn whisper_prompt(s: &Settings, terms: &[String]) -> String {
         p.push_str(s.whisper_prompt.trim());
         p.push(' ');
     }
-    p.push_str("Hallo, wie geht es dir? Ich habe heute ein Meeting mit dem Team, und wir besprechen das Deployment. Okay, let's go: Hast du die Pull Request gesehen?");
+    p.push_str(PRIMER);
     p
 }
 
 pub fn transcribe(http: &Client, s: &Settings, wav: Vec<u8>, terms: &[String]) -> Result<String, String> {
+    let (text, lang) = transcribe_once(http, s, wav.clone(), terms, None)?;
+    // auto mode: Whisper sometimes mis-detects the language on short or casual speech.
+    // Only German/English are expected, otherwise redo it with German pinned.
+    if s.language == "auto" {
+        let l = lang.to_lowercase();
+        if !l.is_empty() && !l.contains("german") && !l.contains("english") && l != "de" && l != "en" {
+            return transcribe_once(http, s, wav, terms, Some("de")).map(|r| r.0);
+        }
+    }
+    Ok(text)
+}
+
+fn transcribe_once(
+    http: &Client,
+    s: &Settings,
+    wav: Vec<u8>,
+    terms: &[String],
+    force_lang: Option<&str>,
+) -> Result<(String, String), String> {
     let part = multipart::Part::bytes(wav)
         .file_name("audio.wav")
         .mime_str("audio/wav")
@@ -71,7 +111,9 @@ pub fn transcribe(http: &Client, s: &Settings, wav: Vec<u8>, terms: &[String]) -
         .text("model", s.stt_model.clone())
         .text("temperature", s.stt_temperature.to_string())
         .text("response_format", "verbose_json");
-    if s.language != "auto" && !s.language.is_empty() {
+    if let Some(l) = force_lang {
+        form = form.text("language", l.to_string());
+    } else if s.language != "auto" && !s.language.is_empty() {
         form = form.text("language", s.language.clone());
     }
     form = form.text("prompt", whisper_prompt(s, terms));
@@ -93,14 +135,15 @@ pub fn transcribe(http: &Client, s: &Settings, wav: Vec<u8>, terms: &[String]) -
                 let nsp = sg["no_speech_prob"].as_f64().unwrap_or(0.0);
                 let lp = sg["avg_logprob"].as_f64().unwrap_or(0.0);
                 let cr = sg["compression_ratio"].as_f64().unwrap_or(1.0);
-                !((nsp > 0.6 && lp < -1.0) || cr > 2.4)
+                !((nsp > 0.5 && lp < -0.8) || nsp > 0.85 || lp < -1.3 || cr > 2.4)
             })
             .filter_map(|sg| sg["text"].as_str())
             .map(str::trim)
             .collect();
-        return Ok(kept.join(" ").trim().to_string());
+        let lang = v["language"].as_str().unwrap_or("").to_string();
+        return Ok((kept.join(" ").trim().to_string(), lang));
     }
-    Ok(v["text"].as_str().unwrap_or("").trim().to_string())
+    Ok((v["text"].as_str().unwrap_or("").trim().to_string(), v["language"].as_str().unwrap_or("").to_string()))
 }
 
 const BASE_PROMPT: &str = "You are a dictation post-processor, not an assistant. \
@@ -112,6 +155,7 @@ Rules:\n\
 - PUNCTUATION IS THE MAIN JOB. Set every period, question mark and exclamation mark. Set all commas by the rules of the language: in German before dass, weil, ob, wenn, obwohl, damit, relative clauses, infinitive groups with zu, and around inserted clauses; in English per standard usage. Use colons, dashes and quotation marks where a careful writer would.\n\
 - Split run-on speech into proper sentences. Capitalize sentence starts, German nouns and proper names.\n\
 - Fix obvious speech-recognition errors from context (homophones, mis-heard names, split or merged words). Use the preferred spellings and suggestions given below only when they fit the context.\n\
+- Keep the speaker's register: casual stays casual (\"hab\", \"nen\", \"ne\", slang, du-form). Never make it more formal.\n\
 - Remove filler words (äh, ähm, uh, um, also/halt/quasi as filler, you know) and stutters or repeated words.\n\
 - On self-corrections (\"nein ich meine\", \"no wait\", \"sorry, I mean\") keep only the final intended version.\n\
 - Spoken formatting commands (\"neue Zeile\", \"new line\", \"neuer Absatz\", \"new paragraph\", \"Punkt\", \"Komma\" when clearly dictated as a command) become the real character or line break.\n\

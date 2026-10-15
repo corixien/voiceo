@@ -291,3 +291,7 @@ kbd { padding: 3px 9px; font-size: 12px; white-space: nowrap; }
 .seg.mini button { padding: 4px 12px; font-size: 12px; }
 .row .l small { max-width: 340px; }
 .brand b { font-family: var(--serif); }
+
+.hk .top { width: 100%; }
+.hk.capturing kbd { border-color: var(--accent); color: var(--accent); animation: pulse 1s ease-in-out infinite; }
+.hk .presets { margin-top: 0; }

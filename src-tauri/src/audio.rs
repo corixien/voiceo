@@ -205,27 +205,77 @@ pub fn peak(samples: &[f32]) -> f32 {
     samples.iter().fold(0f32, |m, s| m.max(s.abs()))
 }
 
-/// Trim leading/trailing silence (20 ms windows) keeping 250 ms padding.
-pub fn trim_silence(samples: &[f32]) -> Vec<f32> {
-    let win = (TARGET_RATE as usize) / 50;
-    if samples.len() < win * 4 {
-        return samples.to_vec();
+/// Energy VAD: keeps speech (+padding), compresses long pauses to 250 ms, drops everything else.
+/// Returns None when there is no real speech. Removes the silence that makes Whisper hallucinate.
+pub fn vad_compress(samples: &[f32]) -> Option<Vec<f32>> {
+    let win = TARGET_RATE as usize / 50; // 20 ms
+    if samples.len() < win * 5 {
+        return None;
     }
-    let p = peak(samples);
-    let thr = (p * 0.04).max(0.004);
-    let loud = |w: &[f32]| (w.iter().map(|s| s * s).sum::<f32>() / w.len() as f32).sqrt() > thr;
-    let wins: Vec<bool> = samples.chunks(win).map(loud).collect();
-    let first = wins.iter().position(|&b| b);
-    let last = wins.iter().rposition(|&b| b);
-    match (first, last) {
-        (Some(f), Some(l)) => {
-            let pad = 12; // 12 * 20ms = 240ms
-            let a = f.saturating_sub(pad) * win;
-            let b = (((l + 1 + pad) * win)).min(samples.len());
-            samples[a..b].to_vec()
+    let energy: Vec<f32> = samples
+        .chunks(win)
+        .map(|w| (w.iter().map(|s| s * s).sum::<f32>() / w.len() as f32).sqrt())
+        .collect();
+    let mut sorted = energy.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let floor = sorted[sorted.len() / 10];
+    let thr = (floor * 3.5).max(0.006);
+    let voiced: Vec<bool> = energy.iter().map(|e| *e > thr).collect();
+
+    // segments of voiced frames, tolerate 200 ms gaps, require >= 100 ms of speech
+    let mut segs: Vec<(usize, usize)> = vec![];
+    let (mut start, mut last, mut count) = (None::<usize>, 0usize, 0usize);
+    for (i, v) in voiced.iter().enumerate() {
+        if *v {
+            if start.is_none() {
+                start = Some(i);
+                count = 0;
+            }
+            last = i;
+            count += 1;
+        } else if let Some(s) = start {
+            if i - last > 10 {
+                if count >= 5 {
+                    segs.push((s, last));
+                }
+                start = None;
+            }
         }
-        _ => samples.to_vec(),
     }
+    if let Some(s) = start {
+        if count >= 5 {
+            segs.push((s, last));
+        }
+    }
+    if segs.is_empty() {
+        return None;
+    }
+    let speech_frames: usize = segs.iter().map(|(s, e)| e - s + 1).sum();
+    if speech_frames < 12 {
+        return None; // < 240 ms of speech
+    }
+    let pad = 8; // 160 ms
+    let gap = vec![0f32; TARGET_RATE as usize / 4];
+    let mut out: Vec<f32> = vec![];
+    let mut prev_end: Option<usize> = None;
+    for (s, e) in segs {
+        let a = s.saturating_sub(pad) * win;
+        let b = ((e + 1 + pad) * win).min(samples.len());
+        match prev_end {
+            Some(p) if a < p => {
+                // overlapping padding: continue without a gap
+                out.extend_from_slice(&samples[p.min(b)..b]);
+            }
+            Some(p) if a - p < TARGET_RATE as usize / 2 => out.extend_from_slice(&samples[p..b]),
+            Some(_) => {
+                out.extend_from_slice(&gap);
+                out.extend_from_slice(&samples[a..b]);
+            }
+            None => out.extend_from_slice(&samples[a..b]),
+        }
+        prev_end = Some(b);
+    }
+    Some(out)
 }
 
 pub fn to_wav(samples: &[f32]) -> Result<Vec<u8>, String> {

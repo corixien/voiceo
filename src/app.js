@@ -4,8 +4,6 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 const MODES = ["raw", "clean", "message", "email", "prompt", "notes", "custom"];
-const PRESETS = [[97], [100], [127], [119], [70]];
-const RISKY = (c) => c.includes(125) || c.includes(126) || (c.includes(56) && c.includes(57)) || (c.includes(29) && c.includes(56) && c.length > 2);
 
 let S = {};
 let saveTimer = null;
@@ -224,48 +222,46 @@ function renderModes() {
   box.style.transition = "opacity .25s";
 }
 
-// ---------- hotkeys ----------
-async function renderPresets() {
-  const box = $("#hk-presets");
-  box.innerHTML = "";
-  for (const codes of PRESETS) {
-    const [label] = await invoke("key_labels", { codes });
-    const b = document.createElement("button");
-    b.textContent = label;
-    b.className = JSON.stringify(S.hotkey) === JSON.stringify(codes) ? "on" : "";
-    b.onclick = () => { S.hotkey = codes; queueSave(); renderHotkey(); };
-    box.appendChild(b);
-  }
-  if (RISKY(S.hotkey || [])) {
-    const w = document.createElement("div");
-    w.className = "warn"; w.textContent = t("hotkey.warn");
-    box.appendChild(w);
-  }
-}
+// ---------- hotkeys (both rows share the same component) ----------
+const HK = {
+  hotkey: { label: "hotkey", hint: "hotkey.hint", presets: [[97], [100], [127], [119], [70]], optional: false },
+  learn_hotkey: { label: "learnkey", hint: "learnkey.hint", presets: [[127], [119], [70], [100]], optional: true },
+};
 async function renderHotkey() {
-  renderPresets();
-  for (const [key, id] of [["hotkey", "#hk-keys"], ["learn_hotkey", "#lk-keys"]]) {
-    const labels = await invoke("key_labels", { codes: S[key] || [] });
-    $(id).innerHTML = labels.map((l) => `<kbd>${l}</kbd>`).join("") || `<kbd>${t("off")}</kbd>`;
+  for (const [field, cfg] of Object.entries(HK)) {
+    const row = $(`[data-hk="${field}"]`);
+    const keys = (await invoke("key_labels", { codes: S[field] || [] }));
+    const presets = [];
+    if (cfg.optional) presets.push({ codes: [], label: t("off") });
+    for (const codes of cfg.presets) presets.push({ codes, label: (await invoke("key_labels", { codes }))[0] });
+    const same = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
+    row.innerHTML = `
+      <div class="top">
+        <div class="l"><b>${t(cfg.label)}</b><small>${t(cfg.hint)}</small></div>
+        <div class="r"><div class="keys">${keys.map((l) => `<kbd>${l}</kbd>`).join("") || `<kbd>${t("off")}</kbd>`}</div>
+          <button class="btn">${t("change")}</button></div>
+      </div>
+      <div class="presets"></div>`;
+    const box = $(".presets", row);
+    presets.forEach((p) => {
+      const b = document.createElement("button");
+      b.textContent = p.label; b.className = same(S[field], p.codes) ? "on" : "";
+      b.onclick = () => { S[field] = p.codes; queueSave(); renderHotkey(); };
+      box.appendChild(b);
+    });
+    $(".btn", row).onclick = async () => {
+      row.classList.add("capturing");
+      $(".keys", row).innerHTML = `<kbd>${t("press")}</kbd>`;
+      $(".btn", row).disabled = true;
+      try {
+        const codes = await invoke("capture_hotkey");
+        if (codes.length) { S[field] = [codes[0]]; queueSave(); }
+      } catch (e) { toast(String(e)); }
+      row.classList.remove("capturing");
+      renderHotkey();
+    };
   }
 }
-function wireCapture(btn, box, keys, field) {
-  $(btn).onclick = async () => {
-    $(box).classList.add("capturing");
-    $(keys).innerHTML = `<kbd>${t("press")}</kbd>`;
-    $(btn).disabled = true;
-    try {
-      const codes = await invoke("capture_hotkey");
-      if (codes.length) { S[field] = codes; queueSave(); }
-    } catch (e) { toast(String(e)); }
-    $(box).classList.remove("capturing");
-    $(btn).disabled = false;
-    renderHotkey();
-  };
-}
-wireCapture("#hk-change", "#hk-box", "#hk-keys", "hotkey");
-wireCapture("#lk-change", "#lk-box", "#lk-keys", "learn_hotkey");
-$("#lk-clear").onclick = () => { S.learn_hotkey = []; queueSave(); renderHotkey(); };
 
 // ---------- learned ----------
 function renderLearned(items) {

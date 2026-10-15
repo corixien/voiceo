@@ -8,6 +8,7 @@ mod hotkey;
 mod learn;
 mod output;
 mod setup;
+mod typing;
 mod watch;
 
 use config::{HistoryItem, Settings};
@@ -264,7 +265,10 @@ fn run_pipeline(
         audio::highpass(&mut pcm);
     }
     if s.trim_silence {
-        pcm = audio::trim_silence(&pcm);
+        match audio::vad_compress(&pcm) {
+            Some(p) => pcm = p,
+            None => return Ok(None), // no real speech
+        }
     }
     if s.normalize {
         audio::normalize(&mut pcm);
@@ -276,7 +280,7 @@ fn run_pipeline(
     terms.dedup();
     let raw = groq::transcribe(&st.http, &s, wav, &terms)?;
     let lower = raw.to_lowercase();
-    if raw.is_empty() || (raw.chars().count() < 90 && HALLUCINATIONS.iter().any(|h| lower.contains(h))) {
+    if raw.is_empty() || groq::is_prompt_echo(&raw) || (raw.chars().count() < 90 && HALLUCINATIONS.iter().any(|h| lower.contains(h))) {
         return Ok(None);
     }
 
@@ -487,10 +491,30 @@ fn system_status(state: State<AppState>) -> serde_json::Value {
         "uinput": state.keyboard.lock().unwrap().is_some(),
         "uinput_error": state.keyboard_err.lock().unwrap().clone(),
         "wl_copy": output::wl_copy_available(),
-        "wtype": output::wtype_available(),
         "atspi": state.watcher.lock().unwrap().is_some(),
         "api_key": !state.settings.lock().unwrap().api_key.trim().is_empty(),
     })
+}
+
+/// Wayland resolves the app icon through a .desktop file matching the app id ("voiceo").
+fn install_desktop_entry() {
+    let Some(home) = std::env::var_os("HOME") else { return };
+    let home = std::path::PathBuf::from(home);
+    let Ok(exe) = std::env::current_exe() else { return };
+    let apps = home.join(".local/share/applications");
+    let icons = home.join(".local/share/icons/hicolor/512x512/apps");
+    let _ = std::fs::create_dir_all(&apps);
+    let _ = std::fs::create_dir_all(&icons);
+    let _ = std::fs::write(icons.join("voiceo.png"), include_bytes!("../icons/icon.png"));
+    let desktop = format!(
+        "[Desktop Entry]\nType=Application\nName=Voiceo\nComment=Voice dictation powered by Groq\nExec={}\nIcon=voiceo\nTerminal=false\nCategories=Utility;AudioVideo;\nStartupWMClass=voiceo\n",
+        exe.display()
+    );
+    let path = apps.join("voiceo.desktop");
+    if std::fs::read_to_string(&path).map(|old| old != desktop).unwrap_or(true) {
+        let _ = std::fs::write(&path, desktop);
+        let _ = std::process::Command::new("update-desktop-database").arg(&apps).status();
+    }
 }
 
 fn main() {
@@ -564,14 +588,16 @@ fn main() {
                     gw.set_accept_focus(false);
                     gw.set_focus_on_map(false);
                     gw.set_skip_taskbar_hint(true);
-                    gw.set_size_request(380, 210);
-                    gw.set_default_size(380, 210);
+                    gw.set_size_request(312, 173);
+                    gw.set_default_size(312, 173);
                     gw.realize();
                     if let Some(gdk_win) = gw.window() {
                         gdk_win.set_pass_through(true);
                     }
                 }
             }
+
+            install_desktop_entry();
 
             // AT-SPI watcher: learns from edits the user makes to dictated text
             if app.state::<AppState>().settings.lock().unwrap().auto_learn {

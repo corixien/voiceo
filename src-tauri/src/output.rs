@@ -10,8 +10,8 @@ pub struct VirtualKb(VirtualDevice);
 impl VirtualKb {
     pub fn new() -> Result<Self, String> {
         let mut keys = AttributeSet::<Key>::new();
-        for k in [Key::KEY_LEFTCTRL, Key::KEY_LEFTSHIFT, Key::KEY_V, Key::KEY_C] {
-            keys.insert(k);
+        for code in 1u16..=248 {
+            keys.insert(Key::new(code));
         }
         let dev = VirtualDeviceBuilder::new()
             .map_err(|e| e.to_string())?
@@ -27,8 +27,17 @@ impl VirtualKb {
         self.0
             .emit(&[InputEvent::new(EventType::KEY, k.code(), val)])
             .map_err(|e| e.to_string())?;
-        std::thread::sleep(Duration::from_millis(12));
+        std::thread::sleep(Duration::from_millis(4));
         Ok(())
+    }
+
+    pub fn press(&mut self, code: u16, down: bool) -> Result<(), String> {
+        self.key(Key::new(code), down as i32)
+    }
+
+    pub fn tap(&mut self, code: u16) -> Result<(), String> {
+        self.key(Key::new(code), 1)?;
+        self.key(Key::new(code), 0)
     }
 
     pub fn copy(&mut self) -> Result<(), String> {
@@ -52,8 +61,12 @@ impl VirtualKb {
     }
 }
 
-fn wl_copy(text: &str) -> Result<(), String> {
-    let mut child = Command::new("wl-copy")
+fn wl_copy_with(text: &str, sensitive: bool) -> Result<(), String> {
+    let mut cmd = Command::new("wl-copy");
+    if sensitive {
+        cmd.arg("--sensitive"); // keeps clipboard managers (Klipper) from storing it
+    }
+    let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -69,10 +82,6 @@ fn wl_copy(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn wtype_available() -> bool {
-    Command::new("wtype").arg("--help").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok()
-}
-
 pub fn wl_copy_available() -> bool {
     Command::new("wl-copy").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok()
 }
@@ -81,57 +90,37 @@ fn wl_clear() {
     let _ = Command::new("wl-copy").arg("--clear").stdout(Stdio::null()).stderr(Stdio::null()).status();
 }
 
-/// Previous clipboard text, if the clipboard currently holds text.
-fn clipboard_text() -> Option<String> {
-    let types = Command::new("wl-paste").arg("--list-types").output().ok()?;
-    let types = String::from_utf8_lossy(&types.stdout);
-    if !types.lines().any(|l| l.starts_with("text/")) {
-        return None;
-    }
-    wl_paste().ok()
-}
-
 /// Copies and/or inserts `text` according to settings. Returns a warning string on partial failure.
-/// With "keep in clipboard" off, the previous clipboard content is restored after pasting.
+/// With "keep in clipboard" off, the clipboard is cleared again after inserting.
 pub fn deliver(s: &Settings, kb: &mut Option<VirtualKb>, text: &str) -> Result<Option<String>, String> {
     let mut warn = None;
-    let pasting = s.auto_insert && s.insert_method == "paste";
-    let restore = !s.copy_to_clipboard && pasting;
-    let previous = if restore { clipboard_text() } else { None };
-    if s.copy_to_clipboard || pasting {
-        wl_copy(text)?;
+    let keep = s.copy_to_clipboard;
+    let mut typed = false;
+
+    if s.auto_insert && s.insert_method == "type" {
+        if let Some(k) = kb.as_mut() {
+            typed = crate::typing::type_text(k, text)?;
+        }
+        if !typed {
+            warn = Some("Tippen nicht moeglich, eingefuegt stattdessen".to_string());
+        }
     }
-    if s.auto_insert {
+    let paste = s.auto_insert && !typed;
+    if keep || paste {
+        wl_copy_with(text, !keep)?;
+    }
+    if paste {
         std::thread::sleep(Duration::from_millis(60));
-        if s.insert_method == "type" {
-            let ok = Command::new("wtype")
-                .arg("--")
-                .arg(text)
-                .status()
-                .map(|st| st.success())
-                .unwrap_or(false);
-            if !ok {
-                warn = Some("wtype fehlgeschlagen, Text liegt in der Zwischenablage".to_string());
-                wl_copy(text)?;
-            }
-        } else {
-            match kb.as_mut() {
-                Some(k) => k.paste(s.paste_shortcut == "ctrl+shift+v")?,
-                None => {
-                    warn = Some("Einfuegen nicht moeglich (uinput), Text liegt in der Zwischenablage".to_string());
-                    return Ok(warn); // keep our text in the clipboard so the user can paste manually
-                }
+        match kb.as_mut() {
+            Some(k) => k.paste(s.paste_shortcut == "ctrl+shift+v")?,
+            None => {
+                return Ok(Some("Einfuegen nicht moeglich (uinput), Text liegt in der Zwischenablage".to_string()));
             }
         }
     }
-    if restore {
-        std::thread::sleep(Duration::from_millis(220)); // let the target app read the clipboard first
-        match previous {
-            Some(p) if !p.is_empty() => {
-                let _ = wl_copy(&p);
-            }
-            _ => wl_clear(),
-        }
+    if !keep && paste {
+        std::thread::sleep(Duration::from_millis(350)); // let the target app read the clipboard first
+        wl_clear();
     }
     Ok(warn)
 }

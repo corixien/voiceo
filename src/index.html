@@ -46,16 +46,7 @@
 
     <div class="card">
       <h2 data-i18n="dictation"></h2>
-      <div class="row col">
-        <div class="top">
-          <div class="l"><b data-i18n="hotkey"></b><small data-i18n="hotkey.hint"></small></div>
-          <div class="r" id="hk-box">
-            <div class="keys" id="hk-keys"></div>
-            <button class="btn" id="hk-change" data-i18n="change"></button>
-          </div>
-        </div>
-        <div class="presets" id="hk-presets"></div>
-      </div>
+      <div class="row col hk" data-hk="hotkey"></div>
       <div class="row">
         <div class="l"><b data-i18n="behavior"></b></div>
         <div class="seg" data-seg="hotkey_mode"><button data-v="hold" data-i18n="hold"></button><button data-v="toggle" data-i18n="toggle"></button></div>
@@ -143,12 +134,7 @@
         <div class="l"><b data-i18n="autolearn"></b><small data-i18n="autolearn.hint"></small></div>
         <label class="switch"><input type="checkbox" data-k="auto_learn"><i></i></label>
       </div>
-      <div class="row col">
-        <div class="top">
-          <div class="l"><b data-i18n="learnkey"></b><small data-i18n="learnkey.hint"></small></div>
-          <div class="r" id="lk-box"><div class="keys" id="lk-keys"></div><button class="btn" id="lk-change" data-i18n="change"></button><button class="btn small" id="lk-clear" data-i18n="off"></button></div>
-        </div>
-      </div>
+      <div class="row col hk" data-hk="learn_hotkey"></div>
     </div>
 
     <div class="card">
