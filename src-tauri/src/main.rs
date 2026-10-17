@@ -36,6 +36,7 @@ pub struct AppState {
     history: Mutex<Vec<HistoryItem>>,
     learned: Mutex<Vec<Learned>>,
     last_text: Mutex<String>,
+    failed: Mutex<Option<(Vec<f32>, u32)>>,
     watcher: Mutex<Option<watch::Watcher>>,
     http: reqwest::blocking::Client,
 }
@@ -188,11 +189,19 @@ fn stop_recording(app: &AppHandle) {
             return;
         }
     };
+    process_audio(app, samples, rate);
+}
+
+/// Runs transcription + cleanup + insertion on a worker thread. On transient Groq/network
+/// failures the audio is kept so the user can retry from the tray without speaking again.
+fn process_audio(app: &AppHandle, samples: Vec<f32>, rate: u32) {
+    let st = app.state::<AppState>();
     st.busy.store(true, Ordering::SeqCst);
     emit_state(app, "thinking", None);
     let app = app.clone();
     std::thread::spawn(move || {
         let t0 = Instant::now();
+        let backup = samples.clone();
         let res = run_pipeline(&app, samples, rate);
         let st = app.state::<AppState>();
         match res {
@@ -230,8 +239,14 @@ fn stop_recording(app: &AppHandle) {
             Err(e) => {
                 eprintln!("pipeline error: {e}");
                 st.busy.store(false, Ordering::SeqCst);
-                emit_state(&app, "error", Some(&e));
-                hide_overlay_later(&app, 3000);
+                let msg = if groq::is_transient(&e) {
+                    *st.failed.lock().unwrap() = Some((backup, rate));
+                    "Groq nicht erreichbar. Tray: Letztes Diktat wiederholen".to_string()
+                } else {
+                    e
+                };
+                emit_state(&app, "error", Some(&msg));
+                hide_overlay_later(&app, 4500);
             }
         }
     });
@@ -265,7 +280,7 @@ fn run_pipeline(
         audio::highpass(&mut pcm);
     }
     if s.trim_silence {
-        match audio::vad_compress(&pcm) {
+        match audio::vad_soft(&pcm) {
             Some(p) => pcm = p,
             None => return Ok(None), // no real speech
         }
@@ -559,6 +574,7 @@ fn main() {
                 history: Mutex::new(history),
                 learned: Mutex::new(learned),
                 last_text: Mutex::new(String::new()),
+                failed: Mutex::new(None),
                 watcher: Mutex::new(None),
                 http: groq::client(),
             });
@@ -610,6 +626,10 @@ fn main() {
                 }
             }
 
+            {
+                let h = app.handle().clone();
+                let _ = groq::NOTIFY.set(Box::new(move |msg| emit_state(&h, "thinking", Some(msg))));
+            }
             install_desktop_entry();
 
             // AT-SPI watcher: learns from edits the user makes to dictated text
@@ -627,8 +647,9 @@ fn main() {
 
             // tray
             let show = MenuItem::with_id(app, "show", "Einstellungen", true, None::<&str>)?;
+            let retry = MenuItem::with_id(app, "retry", "Letztes Diktat wiederholen", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Beenden", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &retry, &quit])?;
             TrayIconBuilder::new()
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .tooltip("Voiceo")
@@ -638,6 +659,16 @@ fn main() {
                         if let Some(w) = app.get_webview_window("main") {
                             let _ = w.show();
                             let _ = w.set_focus();
+                        }
+                    }
+                    "retry" => {
+                        let st = app.state::<AppState>();
+                        let failed = st.failed.lock().unwrap().take();
+                        if let Some((samples, rate)) = failed {
+                            if st.settings.lock().unwrap().overlay {
+                                show_overlay(app);
+                            }
+                            process_audio(app, samples, rate);
                         }
                     }
                     "quit" => app.exit(0),

@@ -42,7 +42,12 @@ fn run(
 ) -> Result<(Vec<f32>, u32), String> {
     let setup = || -> Result<(cpal::Stream, Arc<Mutex<Vec<f32>>>, u32), String> {
         let host = cpal::default_host();
-        let named = if device.is_empty() {
+        // "" = built-in microphone (via PipeWire node), "system" = whatever the system default is
+        match (device.as_str(), builtin_source()) {
+            ("", Some(node)) => std::env::set_var("PIPEWIRE_NODE", node),
+            _ => std::env::remove_var("PIPEWIRE_NODE"),
+        }
+        let named = if device.is_empty() || device == "system" {
             None
         } else {
             host.input_devices()
@@ -151,10 +156,20 @@ fn bands(win: &[f32], rate: u32) -> [f32; BAND_COUNT] {
     out
 }
 
+/// The laptop's own microphone: the PCI-attached PipeWire/Pulse source (USB and Bluetooth are skipped).
+pub fn builtin_source() -> Option<String> {
+    let out = std::process::Command::new("pactl").args(["list", "short", "sources"]).output().ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.split('\t').nth(1))
+        .find(|n| n.starts_with("alsa_input.pci-"))
+        .map(String::from)
+}
+
 pub fn list_inputs() -> Vec<String> {
     cpal::default_host()
         .input_devices()
-        .map(|d| d.filter_map(|x| x.name().ok()).collect())
+        .map(|d| d.filter_map(|x| x.name().ok()).filter(|n| n.starts_with("sysdefault:")).collect())
         .unwrap_or_default()
 }
 
@@ -205,9 +220,12 @@ pub fn peak(samples: &[f32]) -> f32 {
     samples.iter().fold(0f32, |m, s| m.max(s.abs()))
 }
 
-/// Energy VAD: keeps speech (+padding), compresses long pauses to 250 ms, drops everything else.
-/// Returns None when there is no real speech. Removes the silence that makes Whisper hallucinate.
-pub fn vad_compress(samples: &[f32]) -> Option<Vec<f32>> {
+/// Inclusive VAD: trims leading/trailing silence and shortens pauses longer than 1 s.
+/// Everything between speech stays untouched so quiet word endings are never clipped.
+/// Returns None when there is no real speech. (Rust port of tools/eval/evalkit.py `vad_soft`.)
+pub fn vad_soft(samples: &[f32]) -> Option<Vec<f32>> {
+    const LO_MUL: f32 = 2.2;
+    const LO_MIN: f32 = 0.0025;
     let win = TARGET_RATE as usize / 50; // 20 ms
     if samples.len() < win * 5 {
         return None;
@@ -216,64 +234,47 @@ pub fn vad_compress(samples: &[f32]) -> Option<Vec<f32>> {
         .chunks(win)
         .map(|w| (w.iter().map(|s| s * s).sum::<f32>() / w.len() as f32).sqrt())
         .collect();
+    let n = energy.len();
     let mut sorted = energy.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let floor = sorted[sorted.len() / 10];
-    let thr = (floor * 3.5).max(0.006);
-    let voiced: Vec<bool> = energy.iter().map(|e| *e > thr).collect();
-
-    // segments of voiced frames, tolerate 200 ms gaps, require >= 100 ms of speech
+    let thr = (sorted[n / 10] * LO_MUL).max(LO_MIN);
+    let voiced: Vec<usize> = energy.iter().enumerate().filter(|(_, e)| **e > thr).map(|(i, _)| i).collect();
+    if voiced.len() < 10 {
+        return None;
+    }
+    let merge = 35; // 700 ms
     let mut segs: Vec<(usize, usize)> = vec![];
-    let (mut start, mut last, mut count) = (None::<usize>, 0usize, 0usize);
-    for (i, v) in voiced.iter().enumerate() {
-        if *v {
-            if start.is_none() {
-                start = Some(i);
-                count = 0;
-            }
-            last = i;
-            count += 1;
-        } else if let Some(s) = start {
-            if i - last > 10 {
-                if count >= 5 {
-                    segs.push((s, last));
-                }
-                start = None;
-            }
+    let (mut s0, mut prev) = (voiced[0], voiced[0]);
+    for &i in &voiced[1..] {
+        if i - prev > merge {
+            segs.push((s0, prev));
+            s0 = i;
         }
+        prev = i;
     }
-    if let Some(s) = start {
-        if count >= 5 {
-            segs.push((s, last));
-        }
-    }
+    segs.push((s0, prev));
+    segs.retain(|(a, b)| b - a + 1 >= 4);
     if segs.is_empty() {
         return None;
     }
-    let speech_frames: usize = segs.iter().map(|(s, e)| e - s + 1).sum();
-    if speech_frames < 12 {
-        return None; // < 240 ms of speech
-    }
-    let pad = 8; // 160 ms
-    let gap = vec![0f32; TARGET_RATE as usize / 4];
+    let pad = 15; // 300 ms
+    let (long_gap, keep_gap) = (TARGET_RATE as usize, (TARGET_RATE as f32 * 0.4) as usize);
     let mut out: Vec<f32> = vec![];
-    let mut prev_end: Option<usize> = None;
-    for (s, e) in segs {
-        let a = s.saturating_sub(pad) * win;
-        let b = ((e + 1 + pad) * win).min(samples.len());
-        match prev_end {
-            Some(p) if a < p => {
-                // overlapping padding: continue without a gap
-                out.extend_from_slice(&samples[p.min(b)..b]);
+    let mut last_end: Option<usize> = None;
+    for (a, b) in segs {
+        let mut a0 = a.saturating_sub(pad) * win;
+        let b0 = ((b + 1 + pad).min(n) * win).min(samples.len());
+        if let Some(le) = last_end {
+            if a0 < le {
+                a0 = le;
             }
-            Some(p) if a - p < TARGET_RATE as usize / 2 => out.extend_from_slice(&samples[p..b]),
-            Some(_) => {
-                out.extend_from_slice(&gap);
-                out.extend_from_slice(&samples[a..b]);
+            if a0 > le {
+                let gap = a0 - le;
+                out.extend_from_slice(&samples[le..le + if gap > long_gap { keep_gap } else { gap }]);
             }
-            None => out.extend_from_slice(&samples[a..b]),
         }
-        prev_end = Some(b);
+        out.extend_from_slice(&samples[a0..b0]);
+        last_end = Some(b0);
     }
     Some(out)
 }

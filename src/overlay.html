@@ -135,7 +135,7 @@
     ctx.restore();
     rr(x + 0.5, top + 0.5, BW - 1, BH - 1, BR); ctx.strokeStyle = EDGE; ctx.lineWidth = 1; ctx.stroke();
 
-    const showBars = state === "listening" || state === "thinking";
+    const showBars = state === "listening" || (state === "thinking" && !message);
     labelAlpha += ((showBars ? 0 : 1) - labelAlpha) * 0.22;
     if (showBars || labelAlpha < 0.98) {
       const total = BARS * BAR_W + (BARS - 1) * BAR_GAP;
@@ -151,7 +151,7 @@
       ctx.globalAlpha = 1;
     }
     if (labelAlpha > 0.02) {
-      let text = state === "done" ? (lang === "en" ? "Inserted" : "Eingefügt") : (state === "learned" || state === "error") ? message : "";
+      let text = state === "done" ? (lang === "en" ? "Inserted" : "Eingefügt") : (state === "learned" || state === "error" || state === "thinking") ? message : "";
       ctx.font = `700 15px ${family}`;
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       const max = BW - 56;
