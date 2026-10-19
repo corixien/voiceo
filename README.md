@@ -22,6 +22,14 @@ On first start Voiceo asks once (polkit password prompt) to grant access to the 
 
 Pick a rarely used hotkey (default: Right Ctrl). Combinations like Ctrl+Alt+Space are often claimed by other apps.
 
+## Android
+
+`android/` is a native Kotlin app with the same pipeline (Groq Whisper, LLM cleanup, learned corrections, glossary), the same settings UI (`src/` runs in a WebView) and the same Voi mascot. The bubble pops out of the camera cutout. Builds are published as APKs under GitHub Releases (tags `android-v*`).
+
+- Enable the **Voiceo accessibility service** once (Settings, Accessibility): it draws the overlay, inserts the text into the focused field and watches that field to learn your corrections.
+- Start/stop a dictation with the Quick Settings tile, the launcher shortcut "Diktat" (Samsung: Side key, Double press, Open app), or the accessibility button/shortcut. Tap once to start, again to insert.
+- Build: `cd android && ./gradlew :app:assembleDebug` (JDK 17-25, Android SDK in `local.properties`). Releases are signed with `VOICEO_KEYSTORE*` env vars.
+
 ## Learning in Electron apps (Claude Desktop, VS Code, ...)
 
 Chromium/Electron apps only expose their text fields to AT-SPI when started with `--force-renderer-accessibility` (the accessibility bus flag alone is not enough, tested with Electron 44). Add the flag to the app's launcher, e.g. a copy of `com.anthropic.Claude.desktop` in `~/.local/share/applications` with `Exec=claude-desktop --force-renderer-accessibility %U`, then restart the app. Firefox and Qt/GTK apps need nothing.

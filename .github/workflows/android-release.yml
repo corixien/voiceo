@@ -1,0 +1,38 @@
+name: android-release
+on:
+  push:
+    tags: ["android-v*"]
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      KS_B64: ${{ secrets.VOICEO_KEYSTORE_B64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Android SDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;35.0.0"
+      - name: Decode keystore
+        if: ${{ env.KS_B64 != '' }}
+        run: echo "$KS_B64" | tr -d " \r\n\"" | base64 -d > "$RUNNER_TEMP/release.jks"
+      - name: Build
+        working-directory: android
+        env:
+          VOICEO_KEYSTORE_PASSWORD: ${{ secrets.VOICEO_KEYSTORE_PASSWORD }}
+          VOICEO_KEY_ALIAS: ${{ secrets.VOICEO_KEY_ALIAS }}
+          VOICEO_KEY_PASSWORD: ${{ secrets.VOICEO_KEY_PASSWORD }}
+        run: |
+          [ -f "$RUNNER_TEMP/release.jks" ] && export VOICEO_KEYSTORE="$RUNNER_TEMP/release.jks"
+          export VOICEO_VERSION_NAME="${GITHUB_REF_NAME#android-v}"
+          export VOICEO_VERSION_CODE="$GITHUB_RUN_NUMBER"
+          echo 'sdk.dir='"$ANDROID_HOME" > local.properties
+          ./gradlew :app:assembleRelease
+          mkdir -p ../dist
+          cp app/build/outputs/apk/release/*.apk "../dist/voiceo-${GITHUB_REF_NAME#android-v}.apk"
+      - uses: softprops/action-gh-release@v2
+        with: { files: "dist/*.apk", generate_release_notes: true, prerelease: true }

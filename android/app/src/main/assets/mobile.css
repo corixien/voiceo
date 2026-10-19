@@ -1,0 +1,35 @@
+/* Phone layout for the shared settings UI (loaded only on Android). */
+html.android, html.android body { height: 100%; }
+html.android body { flex-direction: column; height: 100dvh; }
+html.android aside {
+  order: 2; width: auto; flex: none; padding: 4px 6px; border-right: 0; border-top: 1px solid var(--line);
+  flex-direction: row; align-items: center;
+}
+html.android .brand, html.android .status-mini, html.android .spacer, html.android #nav-ind { display: none; }
+html.android nav { flex-direction: row; width: 100%; justify-content: space-between; gap: 0; }
+html.android nav button {
+  flex: 1; flex-direction: column; justify-content: center; gap: 3px; height: 54px; padding: 0 2px; font-size: 10.5px;
+  border-radius: 12px; min-width: 0;
+}
+html.android nav button span { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+html.android nav button.active { background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
+html.android main { order: 1; padding: 20px 14px 24px; flex: 1; min-height: 0; }
+html.android h1 { font-size: 26px; }
+html.android .sub { font-size: 13.5px; margin-bottom: 20px; }
+html.android .card { margin-bottom: 16px; border-radius: 16px; }
+html.android .card > h2 { padding: 16px 16px 4px; }
+html.android .row { padding: 14px 16px; gap: 12px; min-height: 56px; flex-wrap: wrap; }
+html.android .row .l small { max-width: none; }
+html.android .row .r { flex: 1 1 auto; justify-content: flex-end; }
+html.android input[type=password], html.android .row input[type=text]:not(.wide), html.android .sel, html.android select {
+  max-width: 100%; min-width: 0;
+}
+html.android .row > input, html.android .row > .sel { flex: 1 1 160px; }
+html.android .pair { flex-wrap: wrap; }
+html.android .pair input { flex: 1 1 120px; }
+/* no hotkeys, hold mode, microphone choice or paste shortcut on phones */
+html.android [data-hk],
+html.android .row:has([data-seg="hotkey_mode"]),
+html.android .row:has(#mic-select),
+html.android .row:has([data-seg="paste_shortcut"]) { display: none !important; }
+html.android ::-webkit-scrollbar { display: none; }

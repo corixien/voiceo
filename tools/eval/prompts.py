@@ -10,8 +10,8 @@ def rust_literal(src, const):
     return s.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
 
 import subprocess
-# P0 = the previously shipped prompt (git HEAD); the working tree now ships P1
-_src = subprocess.check_output(["git", "-C", os.path.dirname(RUST), "show", "HEAD:src-tauri/src/groq.rs"], text=True)
+# P0 = the prompt shipped before 460ed5d (old baseline); the app now ships P1 from src-tauri/data/prompt_base.txt
+_src = subprocess.check_output(["git", "-C", os.path.dirname(RUST), "show", "460ed5d~1:src-tauri/src/groq.rs"], text=True)
 P0_BASE = rust_literal(_src, "BASE_PROMPT")
 CLEAN_STYLE = "Style: keep the original wording and tone as close as possible. Only clean up."
 

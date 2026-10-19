@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Voiceo</string>
+    <string name="shortcut_dictate">Diktat</string>
+    <string name="shortcut_dictate_long">Diktat starten oder beenden</string>
+    <string name="accessibility_description">Voiceo zeigt die Aufnahme-Blase an der Kamera, fügt diktierten Text in das aktive Textfeld ein und lernt aus deinen Korrekturen. Es liest dafür nur das Textfeld, in das Voiceo gerade eingefügt hat.</string>
+</resources>

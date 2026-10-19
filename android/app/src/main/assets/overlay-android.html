@@ -1,0 +1,181 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<style>
+  @font-face { font-family: "Lexend Deca"; font-weight: 400; src: url("fonts/lexend-deca-400.woff2") format("woff2"); }
+  @font-face { font-family: "Lexend Deca"; font-weight: 500 700; src: url("fonts/lexend-deca-700.woff2") format("woff2"); }
+  html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="mascot.js"></script>
+<script>
+// Voiceo overlay for phones: the bubble pops out of the camera cutout, drops down and the mascot
+// slides out from behind it. Same look and spring physics as the desktop overlay (src/overlay.html),
+// mirrored to the top edge. Driven from Kotlin via window.VoiceoOverlay.
+(() => {
+  const H = 220;
+  const BW = 236, BH = 62, BR = 22, GAP = 16;
+  const BARS = 17, BAR_W = 4, BAR_GAP = 5, BAR_MAX = 38, BAR_MIN = 4;
+  const FILL = "#2B2A28", EDGE = "rgba(255,255,255,0.09)", ORANGE = "#E27B58", TEXT = "#ECEAE2";
+
+  const canvas = document.getElementById("c");
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  let W = window.innerWidth || 412;
+  function size() {
+    W = window.innerWidth || W;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  }
+  size();
+  const ctx = canvas.getContext("2d");
+  addEventListener("resize", size);
+
+  let cx = W / 2, cy = -2, cr = 9;                  // camera cutout (css px)
+  let state = "idle", message = "", running = false, last = 0, shown = false;
+  let p = 0, pv = 0;                                 // bubble spring: 0 = inside the hole, 1 = rest
+  let m = 0, mv = 0;                                 // mascot spring: 0 = behind bubble, 1 = hanging below it
+  let rings = [], wasShown = false;
+  let level = 0, rawBands = new Array(16).fill(0);
+  const env = new Array(BARS).fill(0), bh = new Array(BARS).fill(BAR_MIN), bv = new Array(BARS).fill(0);
+  let labelAlpha = 0, lookX = 0, lookT = 0, lookTarget = 0;
+  let family = '"Lexend Deca", ui-sans-serif, system-ui, sans-serif', lang = "de";
+  const FAMILIES = {
+    lexend: '"Lexend Deca", ui-sans-serif, system-ui, sans-serif',
+    anthropic: '"Anthropic Sans", "Styrene B", "Inter", ui-sans-serif, system-ui, sans-serif',
+    system: 'ui-sans-serif, system-ui, "Inter", "Segoe UI", sans-serif',
+  };
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+  function rr(x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function band01(a, i) {
+    const db = 20 * Math.log10(a + 1e-5);
+    return Math.pow(Math.min(1, Math.max(0, (db + 64) / 44)), 1.25) * (1 + i * 0.045);
+  }
+
+  function updateBars(dt, t) {
+    for (let i = 0; i < BARS; i++) {
+      const d = Math.abs(i - (BARS - 1) / 2);
+      const bi = (d / ((BARS - 1) / 2)) * 13;
+      const lo = Math.floor(bi), hi = Math.min(15, lo + 1), f = bi - lo;
+      let target = 0;
+      if (state === "listening") {
+        const a = rawBands[lo] * (1 - f) + rawBands[hi] * f;
+        target = Math.min(1, band01(a, bi) * (1.05 - d * 0.035));
+      } else if (state === "thinking") {
+        target = 0.16 + 0.2 * (0.5 + 0.5 * Math.sin(t / 230 - i * 0.6));
+      }
+      env[i] += (target - env[i]) * (target > env[i] ? 0.7 : 0.2);
+      const goal = BAR_MIN + env[i] * (BAR_MAX - BAR_MIN);
+      bv[i] += (-520 * (bh[i] - goal) - 24 * bv[i]) * dt;
+      bh[i] = Math.max(BAR_MIN, bh[i] + bv[i] * dt);
+    }
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.034, (now - last) / 1000); last = now;
+    const t = now;
+    const restTop = cy + cr + GAP;
+
+    // bubble: pops out of the hole with overshoot, retreats firmer
+    const goal = shown ? 1 : 0;
+    const k = shown ? 210 : 360, c = shown ? 17 : 30;
+    pv += (-k * (p - goal) - c * pv) * dt; p += pv * dt;
+    // mascot slides out after the bubble
+    mv += (-340 * (m - (shown ? 1 : 0)) - 17 * mv) * dt; m += mv * dt;
+
+    if (shown && !wasShown) rings.push({ t0: now }, { t0: now + 140 });
+    wasShown = shown;
+
+    lookT += dt;
+    if (lookT > 1.6 + Math.random()) { lookT = 0; lookTarget = (Math.random() - 0.5) * 1.6; }
+    lookX += (((state === "listening") ? -0.55 : lookTarget) - lookX) * 0.08;
+    updateBars(dt, t);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const q = Math.max(0, p);
+    const w = lerp(cr * 2, BW, q), h = lerp(cr * 2, BH, q);
+    const x = cx - w / 2, y = lerp(cy - cr, restTop, q);
+    const rad = lerp(cr, BR, Math.min(1, q * 1.2));
+    const bottom = y + h;
+
+    // rings around the hole while it breaks through
+    rings = rings.filter((r) => now - r.t0 < 700);
+    for (const r of rings) {
+      const a = (now - r.t0) / 700;
+      if (a < 0) continue;
+      ctx.beginPath(); ctx.arc(cx, cy, cr + 4 + a * 40, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(226,123,88,${0.55 * (1 - a)})`; ctx.lineWidth = 2.2 * (1 - a) + 0.4; ctx.stroke();
+    }
+
+    // mascot hangs below the bubble, tucked behind it at first
+    const mq = Math.max(0, m);
+    if (mq > 0.01 && q > 0.2) {
+      const mx = cx + BW / 2 - 50 - lerp(0, 0, mq);
+      const my = lerp(y + h / 2, restTop + BH + 18, Math.min(1.15, mq));
+      window.Voi.draw(ctx, { x: mx, y: my, s: 1, state: state === "idle" ? "idle" : state, t, level: Math.min(1, level * 9), look: [lookX, state === "listening" ? 0.1 : 0] });
+    }
+
+    // bubble
+    if (q > 0.01) {
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = 22 * Math.min(1, q); ctx.shadowOffsetY = 8 * Math.min(1, q);
+      rr(x, y, w, h, rad); ctx.fillStyle = FILL; ctx.fill();
+      ctx.restore();
+      rr(x + 0.5, y + 0.5, w - 1, h - 1, rad); ctx.strokeStyle = EDGE; ctx.lineWidth = 1; ctx.stroke();
+
+      const ca = Math.max(0, Math.min(1, (q - 0.55) / 0.45));
+      if (ca > 0.01) {
+        const showBars = state === "listening" || (state === "thinking" && !message);
+        labelAlpha += ((showBars ? 0 : 1) - labelAlpha) * 0.22;
+        const cyb = y + h / 2;
+        if (showBars || labelAlpha < 0.98) {
+          const total = BARS * BAR_W + (BARS - 1) * BAR_GAP;
+          let bx = cx - total / 2;
+          ctx.fillStyle = ORANGE; ctx.globalAlpha = (1 - labelAlpha) * ca;
+          for (let i = 0; i < BARS; i++) { rr(bx, cyb - bh[i] / 2, BAR_W, bh[i], BAR_W / 2); ctx.fill(); bx += BAR_W + BAR_GAP; }
+          ctx.globalAlpha = 1;
+        }
+        if (labelAlpha > 0.02) {
+          let text = state === "done" ? (lang === "en" ? "Inserted" : "Eingefügt") : (state === "learned" || state === "error" || state === "thinking") ? message : "";
+          ctx.font = `700 15px ${family}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          const max = BW - 56;
+          while (ctx.measureText(text).width > max && text.length > 3) text = text.slice(0, -2).trimEnd() + "…";
+          ctx.globalAlpha = labelAlpha * ca; ctx.fillStyle = state === "error" ? "#F0A58C" : TEXT;
+          ctx.fillText(text, cx, cyb + 1); ctx.globalAlpha = 1;
+        }
+      }
+    }
+    if (mq > 0.3 && q > 0.6) window.Voi.hands(ctx, { x: cx + BW / 2 - 50, y: bottom - 1, s: 1 });
+
+    const settled = !shown && p < 0.005 && Math.abs(pv) < 0.05 && mq < 0.01 && rings.length === 0;
+    if (settled) { running = false; ctx.clearRect(0, 0, W, H); return; }
+    requestAnimationFrame(frame);
+  }
+
+  function start() { if (!running) { running = true; last = performance.now(); requestAnimationFrame(frame); } }
+
+  window.VoiceoOverlay = {
+    config(x, y, r, font, l) {
+      size(); cx = x; cy = y; cr = Math.max(4, r);
+      family = FAMILIES[font] || FAMILIES.lexend; lang = l || "de";
+    },
+    state(s, msg) { state = s; message = msg || ""; shown = s !== "idle"; if (shown) start(); else if (running) start(); },
+    audio(rms, bands) { level = rms; rawBands = bands; },
+  };
+  document.fonts && document.fonts.load('700 15px "Lexend Deca"').catch(() => {});
+  if (window.VoiceoNative) VoiceoNative.ready();
+})();
+</script>
+</body>
+</html>

@@ -283,16 +283,18 @@ $("#test-key").onclick = async () => {
 // ---------- status ----------
 async function refreshStatus() {
   const s = await invoke("system_status");
-  const checks = [
+  const pc = window.platformChecks ? await window.platformChecks(s) : null;   // Android supplies its own checks
+  const checks = pc ? pc.checks : [
     [s.api_key, t("chk.key"), s.api_key ? t("chk.key.ok") : t("chk.key.bad")],
     [s.keyboards > 0, t("chk.hotkey"), s.keyboards > 0 ? t("chk.hotkey.ok", { n: s.keyboards }) : t("chk.hotkey.bad")],
     [s.wl_copy, t("chk.clip"), s.wl_copy ? t("chk.clip.ok") : t("chk.clip.bad")],
     [s.uinput, t("chk.paste"), s.uinput ? t("chk.paste.ok") : t("chk.paste.bad")],
     [s.atspi, t("chk.learn"), s.atspi ? t("chk.learn.ok") : t("chk.learn.bad")],
   ];
+  const needSetup = pc ? pc.needSetup : !(s.keyboards > 0 && s.uinput);
   $("#checks").innerHTML = checks.map(([ok, name, d]) => `
     <div class="check"><span class="dot ${ok ? "ok" : "bad"}"></span><div><b>${name}</b><small>${d}</small></div></div>`).join("")
-    + ((s.keyboards > 0 && s.uinput) ? "" : `<div class="check"><button class="btn primary" id="run-setup">${t("setup")}</button><small>${t("setup.hint")}</small></div>`);
+    + (needSetup ? `<div class="check"><button class="btn primary" id="run-setup">${t("setup")}</button><small>${t("setup.hint")}</small></div>` : "");
   const rs = $("#run-setup");
   if (rs) rs.onclick = async () => {
     rs.disabled = true; rs.textContent = t("setting-up");
@@ -300,7 +302,7 @@ async function refreshStatus() {
     catch (e) { toast(String(e)); }
     refreshStatus(); renderHotkey();
   };
-  const core = checks.slice(0, 4).every((c) => c[0]);
+  const core = pc ? pc.core : checks.slice(0, 4).every((c) => c[0]);
   $("#mini-dot").className = "dot " + (core ? "ok" : "bad");
   $("#mini-text").textContent = core ? t("ready") : t("incomplete");
 }

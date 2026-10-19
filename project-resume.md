@@ -30,6 +30,14 @@ Run from `~/voiceo`.
 - Restarting the dev app: kill `voiceo` and `tauri dev`, then `npm run dev` (use exact-name `pgrep -x voiceo`; `pkill -f` with a pattern also present in the command line kills your own shell).
 - Eval harness: see `tools/eval/README.md`.
 
+## 4b. Android app (`android/`)
+Native Kotlin (no Compose, no NDK, AGP 9.4.1, Gradle 9.8.1, JDK 25 ok, minSdk 29, target 35), package `dev.voiceo.app`. Pieces: `Store` (settings/learned/history JSON, same keys as desktop), `Groq` (port of groq.rs incl. retry; loads `prompt_base.txt` from shared assets, `DEFAULT_VOCAB`/`PRIMER`/mode prompts are duplicated from groq.rs: keep in sync), `Glossary`/`Learn`/`Dsp` (ports of glossary.rs, learn.rs, audio.rs incl. `vad_soft`), `Pipeline`, `Dictation` (process-wide state + listeners), `DictationService` (microphone foreground service: record, pipeline, insert), `VoiceoAccessibilityService` (overlay window of type accessibility-overlay with a WebView, text insertion by ACTION_PASTE with SET_TEXT fallback, edit watcher = port of `atspi_helper.py`, accessibility button), `MainActivity` (WebView with shared `src/index.html`, `android-shim.js` maps Tauri `invoke`/`listen` to `VoiceoBridge`, `mobile.css` = phone layout), `TriggerActivity` (invisible, for launcher shortcut / Samsung side key), `DictateTileService`.
+- Shared with desktop via Gradle asset dirs: `src/` (UI, mascot, fonts) and `src-tauri/data/` (glossary, `prompt_base.txt` which `groq.rs` also `include_str!`s).
+- Overlay: `assets/overlay-android.html` (mirrored version of `src/overlay.html`; bubble morphs out of the camera cutout, rings, mascot hangs below). Cutout read from `WindowMetrics.windowInsets.displayCutout`.
+- Build/test: `cd android && ./gradlew :app:testDebugUnitTest :app:assembleDebug`. Release signing: `source ~/.config/voiceo-android/keystore.env` (key never in repo; back it up, losing it breaks updates), `VOICEO_VERSION_NAME/CODE`, `:app:assembleRelease`. Publish: `gh release create android-vX.Y.Z --prerelease <apk>`. CI: `.github/workflows/android-release.yml` needs secrets `VOICEO_KEYSTORE_B64`, `VOICEO_KEYSTORE_PASSWORD`, `VOICEO_KEY_ALIAS`, `VOICEO_KEY_PASSWORD` (not set yet).
+- Not yet tested on a device (user will hand over the phone, Galaxy S23+ SM-S916B, Android 16, adb id R5CW60TH73W; do not install anything before they say so). Open risks to check first: mic foreground service start from tile/shortcut/accessibility button on Android 14+, `ACTION_PASTE` acceptance in Chromium/Electron fields, WebView transparency in the accessibility overlay, cutout rect values, Samsung side-key "open app" listing the Voiceo shortcut.
+- Desktop UI hook: `app.js refreshStatus` uses `window.platformChecks` when present (Android only).
+
 ## 5. Invariants and gotchas
 - Overlay must never take focus (layer-shell, `KeyboardMode::None`).
 - Hotkeys are free key combinations; Esc as first key while capturing switches that hotkey off. Combos can collide with other apps (Ctrl+Alt+Space opens Claude Desktop).
@@ -50,6 +58,7 @@ Backtest results (word error rate, lower is better; 48 TTS utterances, clean + n
 - Eval scripts: `HOLDOUT=1` switches `exp_whisper.py`/`exp_llm.py` to corpus2/audio2. `prompts.py` P0 now reads the old prompt from git HEAD of `groq.rs`.
 
 ## 7. Next steps
+0. Android: test on the phone once the user allows it (see 4b), fix what breaks, then publish stable release.
 1. RNNoise integration only if a `dn_vad2` Whisper run shows a gain; otherwise leave `denoise` as a dev tool.
 2. P4 (8 examples) vs P1 on the tuning set only (hold-out is spent).
 3. Offline language packs (user asked): not implemented. Option: `whisper-rs` + downloadable ggml model as offline fallback when Groq is rate-limited. Needs cmake/clang build, CPU inference slower and less accurate than Groq large-v3. Ask the user before building it.
