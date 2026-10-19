@@ -162,6 +162,10 @@ class MainActivity : Activity(), Dictation.Listener {
                 }
                 "false"
             }
+            "open_app_info" -> {
+                runOnUiThread { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName"))) }
+                "null"
+            }
             "start_dictation" -> { runOnUiThread { Dictation.toggle(this@MainActivity) }; "null" }
             "key_labels", "list_inputs" -> "[]"
             "capture_hotkey" -> throw IllegalStateException("Nicht auf Android verfügbar")

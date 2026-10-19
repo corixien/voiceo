@@ -58,24 +58,28 @@
     card.className = "card";
     card.innerHTML = `<h2></h2>
       <div class="row col"><div class="l"><small id="howto" style="max-width:none"></small></div>
-      <button class="btn primary" id="start-test"></button></div>`;
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" id="start-test"></button><button class="btn" id="app-info"></button></div></div>`;
     const first = sec.querySelector(".card");
     first.after(card);
     const fill = () => {
       card.querySelector("h2").textContent = de() ? "Diktat starten" : "Start dictation";
       card.querySelector("#howto").innerHTML = de()
         ? `<b>Schnelleinstellung:</b> Kachel &bdquo;Voiceo&ldquo; hinzufügen (Statusleiste herunterziehen, Stift).<br>
-           <b>Seitentaste:</b> Einstellungen &rarr; Erweiterte Funktionen &rarr; Seitentaste &rarr; Doppeltes Drücken &rarr; App öffnen &rarr; Voiceo &bdquo;Diktat&ldquo;.<br>
-           <b>Bedienungshilfen-Taste:</b> Einstellungen &rarr; Bedienungshilfen &rarr; Voiceo &rarr; Verknüpfung.<br>
-           Einmal tippen startet, nochmal tippen fügt den Text am Cursor ein.`
+           <b>Seitentaste:</b> Einstellungen &rarr; Erweiterte Funktionen &rarr; Seitentaste &rarr; Doppeltes Drücken &rarr; App öffnen &rarr; <b>&bdquo;Voiceo Diktat&ldquo;</b> (eigenes Symbol, startet direkt die Aufnahme).<br>
+           <b>Lautstärketasten:</b> Einstellungen &rarr; Bedienungshilfen &rarr; Erweiterte Einstellungen &rarr; Lautstärketasten-Verknüpfung &rarr; Voiceo.<br>
+           Einmal tippen startet, nochmal tippen fügt den Text am Cursor ein.<br><br>
+           <b>&bdquo;App-Zugriff verweigert&ldquo; bei der Bedienungshilfe?</b> Android sperrt sie bei Apps außerhalb des Play Store: App-Info &rarr; Menü &#8942; oben rechts &rarr; &bdquo;Eingeschränkte Einstellungen zulassen&ldquo;, dann erneut aktivieren.`
         : `<b>Quick Settings:</b> add the &ldquo;Voiceo&rdquo; tile (pull down the status bar, pencil).<br>
-           <b>Side key:</b> Settings &rarr; Advanced features &rarr; Side key &rarr; Double press &rarr; Open app &rarr; Voiceo &ldquo;Dictate&rdquo;.<br>
-           <b>Accessibility button:</b> Settings &rarr; Accessibility &rarr; Voiceo &rarr; Shortcut.<br>
-           Tap once to start, tap again to insert the text at the cursor.`;
+           <b>Side key:</b> Settings &rarr; Advanced features &rarr; Side key &rarr; Double press &rarr; Open app &rarr; <b>&ldquo;Voiceo Diktat&rdquo;</b> (own icon, starts recording directly).<br>
+           <b>Volume keys:</b> Settings &rarr; Accessibility &rarr; Advanced settings &rarr; Volume keys shortcut &rarr; Voiceo.<br>
+           Tap once to start, tap again to insert the text at the cursor.<br><br>
+           <b>&ldquo;App access denied&rdquo; for the accessibility service?</b> Android blocks it for apps from outside the Play Store: App info &rarr; menu &#8942; top right &rarr; &ldquo;Allow restricted settings&rdquo;, then enable it again.`;
       card.querySelector("#start-test").textContent = de() ? "Jetzt testen" : "Try now";
+      card.querySelector("#app-info").textContent = de() ? "App-Info öffnen" : "Open app info";
     };
     fill();
     card.querySelector("#start-test").onclick = () => { __TAURI__.core.invoke("start_dictation"); };
+    card.querySelector("#app-info").onclick = () => { __TAURI__.core.invoke("open_app_info"); };
     new MutationObserver(fill).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
   });
 })();
