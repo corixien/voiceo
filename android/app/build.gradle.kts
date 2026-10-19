@@ -22,6 +22,9 @@ android {
             storePassword = System.getenv("VOICEO_KEYSTORE_PASSWORD")
             keyAlias = System.getenv("VOICEO_KEY_ALIAS")
             keyPassword = System.getenv("VOICEO_KEY_PASSWORD")
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
     buildTypes {

@@ -46,19 +46,6 @@
             </intent-filter>
         </activity>
 
-        <!-- second launcher entry: tapping it (or binding it to the Samsung side key) toggles dictation -->
-        <activity-alias
-            android:name=".DictateLauncher"
-            android:targetActivity=".TriggerActivity"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/launcher_dictate">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
         <service
             android:name=".DictationService"
             android:exported="false"

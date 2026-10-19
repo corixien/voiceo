@@ -65,12 +65,11 @@
       card.querySelector("h2").textContent = de() ? "Diktat starten" : "Start dictation";
       card.querySelector("#howto").innerHTML = de()
         ? `<b>Schnelleinstellung:</b> Kachel &bdquo;Voiceo&ldquo; hinzufügen (Statusleiste herunterziehen, Stift).<br>
-           <b>Seitentaste:</b> Einstellungen &rarr; Erweiterte Funktionen &rarr; Seitentaste &rarr; Doppeltes Drücken &rarr; App öffnen &rarr; <b>&bdquo;Voiceo Diktat&ldquo;</b> (eigenes Symbol, startet direkt die Aufnahme).<br>
+          
            <b>Lautstärketasten:</b> Einstellungen &rarr; Bedienungshilfen &rarr; Erweiterte Einstellungen &rarr; Lautstärketasten-Verknüpfung &rarr; Voiceo.<br>
            Einmal tippen startet, nochmal tippen fügt den Text am Cursor ein.<br><br>
            <b>&bdquo;App-Zugriff verweigert&ldquo; bei der Bedienungshilfe?</b> Android sperrt sie bei Apps außerhalb des Play Store: App-Info &rarr; Menü &#8942; oben rechts &rarr; &bdquo;Eingeschränkte Einstellungen zulassen&ldquo;, dann erneut aktivieren.`
         : `<b>Quick Settings:</b> add the &ldquo;Voiceo&rdquo; tile (pull down the status bar, pencil).<br>
-           <b>Side key:</b> Settings &rarr; Advanced features &rarr; Side key &rarr; Double press &rarr; Open app &rarr; <b>&ldquo;Voiceo Diktat&rdquo;</b> (own icon, starts recording directly).<br>
            <b>Volume keys:</b> Settings &rarr; Accessibility &rarr; Advanced settings &rarr; Volume keys shortcut &rarr; Voiceo.<br>
            Tap once to start, tap again to insert the text at the cursor.<br><br>
            <b>&ldquo;App access denied&rdquo; for the accessibility service?</b> Android blocks it for apps from outside the Play Store: App info &rarr; menu &#8942; top right &rarr; &ldquo;Allow restricted settings&rdquo;, then enable it again.`;
