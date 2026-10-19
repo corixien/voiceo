@@ -22,6 +22,10 @@ On first start Voiceo asks once (polkit password prompt) to grant access to the 
 
 Pick a rarely used hotkey (default: Right Ctrl). Combinations like Ctrl+Alt+Space are often claimed by other apps.
 
+## Learning in Electron apps (Claude Desktop, VS Code, ...)
+
+Chromium/Electron apps only expose their text fields to AT-SPI when started with `--force-renderer-accessibility` (the accessibility bus flag alone is not enough, tested with Electron 44). Add the flag to the app's launcher, e.g. a copy of `com.anthropic.Claude.desktop` in `~/.local/share/applications` with `Exec=claude-desktop --force-renderer-accessibility %U`, then restart the app. Firefox and Qt/GTK apps need nothing.
+
 ## Quality tooling
 
 `tools/eval` contains a backtesting harness: synthetic speech with ground truth, run through the same preprocessing, Whisper and cleanup steps, scored by word error rate. See `tools/eval/README.md`.

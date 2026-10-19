@@ -39,6 +39,8 @@ Run from `~/voiceo`.
 - `src-tauri/target/` is large and gitignored; safe to `cargo clean`.
 - Never print `settings.json` contents (API key). Remove test entries from the user's `learned.json`/`history.json` after tests.
 
+- Learning (AT-SPI) in Electron apps (Claude Desktop) only works if the app is launched with `--force-renderer-accessibility`; `IsEnabled`/`ScreenReaderEnabled` on the a11y bus are not enough (tested live with Electron 44). Fix is a launcher override, not Voiceo code; see README. The desktop entry runs the release build (`npm run tauri build -- --no-bundle`); the debug binary needs `tauri dev` running on 127.0.0.1:1430.
+
 ## 6. Current state
 Committed on `main`: Groq retry/backoff, tray "repeat last dictation", built-in mic default, `tools/eval` harness, `denoise` dev bin, and the winning quality config ported to Rust: Whisper prompt = glossary (`DEFAULT_VOCAB` + user terms) + primer, `vad_soft` in `run_pipeline` (old `vad_compress` removed), defaults `highpass=false`, `normalize=false`, `llm_model=qwen/qwen3.8-27b` (fallbacks gpt-oss-120b/20b, `<think>` stripped), `BASE_PROMPT` = P1 (`tools/eval/prompts.py`). Existing `settings.json` keep their old values; new defaults only apply to fresh installs.
 
