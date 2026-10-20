@@ -5,14 +5,20 @@ html.android aside {
   order: 2; width: auto; flex: none; padding: 4px 6px; border-right: 0; border-top: 1px solid var(--line);
   flex-direction: row; align-items: center;
 }
-html.android .brand, html.android .status-mini, html.android .spacer, html.android #nav-ind { display: none; }
+html.android .brand, html.android .status-mini, html.android .spacer { display: none; }
+html.android * { -webkit-tap-highlight-color: transparent; }
 html.android nav { flex-direction: row; width: 100%; justify-content: space-between; gap: 0; }
 html.android nav button {
   flex: 1; flex-direction: column; justify-content: center; gap: 3px; height: 54px; padding: 0 2px; font-size: 10.5px;
   border-radius: 12px; min-width: 0;
 }
 html.android nav button span { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-html.android nav button.active { background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
+html.android #nav-ind {
+  display: block; left: 0; right: auto; top: 0; width: 56px; height: 54px; border-radius: 14px;
+  background: var(--panel); box-shadow: 0 0 0 1px var(--line); transition: transform 0.38s var(--spring), width 0.3s var(--ease);
+}
+html.android nav button:active { transform: scale(0.94); border-radius: 14px; }
+html.android nav button { transition: color 0.18s, transform 0.25s var(--spring); }
 html.android main { order: 1; padding: 20px 14px 24px; flex: 1; min-height: 0; }
 html.android h1 { font-size: 26px; }
 html.android .sub { font-size: 13.5px; margin-bottom: 20px; }
@@ -33,3 +39,8 @@ html.android .row:has([data-seg="hotkey_mode"]),
 html.android .row:has(#mic-select),
 html.android .row:has([data-seg="paste_shortcut"]) { display: none !important; }
 html.android ::-webkit-scrollbar { display: none; }
+html.android .row:has(.r input) { flex-direction: column; align-items: stretch; }
+html.android .row .r { min-width: 0; flex-wrap: nowrap; justify-content: stretch; }
+html.android .row .r input { flex: 1 1 auto; min-width: 0; width: auto; }
+html.android .row .r .btn { flex: none; }
+html.android .row .l small strong { color: var(--text); font-weight: 600; }

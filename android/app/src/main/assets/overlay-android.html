@@ -122,7 +122,7 @@
     const mq = Math.max(0, m);
     if (mq > 0.01 && q > 0.2) {
       const mx = cx + BW / 2 - 50 - lerp(0, 0, mq);
-      const my = lerp(y + h / 2, restTop + BH + 18, Math.min(1.15, mq));
+      const my = lerp(y + h / 2, restTop + BH + 10, Math.min(1.15, mq));
       window.Voi.draw(ctx, { x: mx, y: my, s: 1, state: state === "idle" ? "idle" : state, t, level: Math.min(1, level * 9), look: [lookX, state === "listening" ? 0.1 : 0] });
     }
 
@@ -156,7 +156,6 @@
         }
       }
     }
-    if (mq > 0.3 && q > 0.6) window.Voi.hands(ctx, { x: cx + BW / 2 - 50, y: bottom - 1, s: 1 });
 
     const settled = !shown && p < 0.005 && Math.abs(pv) < 0.05 && mq < 0.01 && rings.length === 0;
     if (settled) { running = false; ctx.clearRect(0, 0, W, H); return; }

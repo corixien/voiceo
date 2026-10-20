@@ -118,6 +118,15 @@ class MainActivity : Activity(), Dictation.Listener {
         return flat.split(':').any { it.equals(me, true) || it.equals(me.replace("dev.voiceo.app/dev.voiceo.app.", "dev.voiceo.app/."), true) }
     }
 
+    /** Android 13+ blocks accessibility services of apps that did not come through a store-like installer. */
+    private fun accessibilityRestricted(): Boolean {
+        if (Build.VERSION.SDK_INT < 33) return false
+        return runCatching {
+            val ops = getSystemService(android.app.AppOpsManager::class.java)
+            ops.unsafeCheckOpNoThrow("android:access_restricted_settings", android.os.Process.myUid(), packageName) != android.app.AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(false)
+    }
+
     private fun learnedJson(items: List<Learned>): String {
         val a = JSONArray()
         items.forEach { a.put(JSONObject().put("from", it.from).put("to", it.to).put("count", it.count)) }
@@ -151,6 +160,7 @@ class MainActivity : Activity(), Dictation.Listener {
             "system_status" -> JSONObject()
                 .put("api_key", store.settings().optString("api_key").isNotBlank())
                 .put("accessibility", accessibilityEnabled())
+                .put("restricted", accessibilityRestricted())
                 .put("mic", Dictation.hasMic(this@MainActivity))
                 .put("notifications", Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED)
                 .toString()
