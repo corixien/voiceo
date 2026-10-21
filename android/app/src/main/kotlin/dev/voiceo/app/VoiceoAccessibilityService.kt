@@ -266,8 +266,12 @@ class VoiceoAccessibilityService : AccessibilityService(), Dictation.Listener {
     fun insertText(text: String, s: JSONObject): Boolean {
         val node = focusedInput() ?: return false
         var ok = false
-        if (s.optString("insert_method", "paste") == "paste") ok = pasteInto(node, text, s.optBoolean("copy_to_clipboard"))
+        val keep = s.optBoolean("copy_to_clipboard")
+        // Without "keep in clipboard" the clipboard is not touched at all: keyboards (Samsung, Gboard)
+        // record every copy in their clipboard history, so paste-then-restore would still leave the text there.
+        if (keep && s.optString("insert_method", "paste") == "paste") ok = pasteInto(node, text, true)
         if (!ok) ok = setTextInto(node, text)
+        if (!ok && !keep) ok = pasteInto(node, text, false)
         if (ok && s.optBoolean("auto_learn", true) && !node.isPassword) startWatch(node, text)
         return ok
     }
@@ -293,11 +297,14 @@ class VoiceoAccessibilityService : AccessibilityService(), Dictation.Listener {
         val merged = cur.substring(0, start) + text + cur.substring(end)
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, merged) }
         if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return false
-        val sel = Bundle().apply {
-            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, start + text.length)
-            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, start + text.length)
-        }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
+        // the text change is applied asynchronously, so the caret has to be moved afterwards (a few tries)
+        val caret = start + text.length
+        for (delay in longArrayOf(60, 200, 500)) handler.postDelayed({
+            if (node.refresh()) node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, caret)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, caret)
+            })
+        }, delay)
         return true
     }
 

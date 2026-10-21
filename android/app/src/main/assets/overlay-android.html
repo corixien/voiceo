@@ -84,7 +84,7 @@
   function frame(now) {
     const dt = Math.min(0.034, (now - last) / 1000); last = now;
     const t = now;
-    const restTop = cy + cr + GAP;
+    const restTop = Math.max(cy + cr + GAP, 68);   // room above the bubble so the antenna is never clipped
 
     // bubble: pops out of the hole with overshoot, retreats firmer
     const goal = shown ? 1 : 0;
@@ -118,11 +118,10 @@
       ctx.strokeStyle = `rgba(226,123,88,${0.55 * (1 - a)})`; ctx.lineWidth = 2.2 * (1 - a) + 0.4; ctx.stroke();
     }
 
-    // mascot hangs below the bubble, tucked behind it at first
+    // mascot sits behind the bubble and peeks over its top-right corner (like the desktop overlay)
     const mq = Math.max(0, m);
+    const mx = cx + BW / 2 - 50, my = restTop - 15 + (1 - Math.min(1.15, mq)) * 46;
     if (mq > 0.01 && q > 0.2) {
-      const mx = cx + BW / 2 - 50 - lerp(0, 0, mq);
-      const my = lerp(y + h / 2, restTop + BH + 10, Math.min(1.15, mq));
       window.Voi.draw(ctx, { x: mx, y: my, s: 1, state: state === "idle" ? "idle" : state, t, level: Math.min(1, level * 9), look: [lookX, state === "listening" ? 0.1 : 0] });
     }
 
@@ -156,6 +155,8 @@
         }
       }
     }
+
+    if (mq > 0.01 && q > 0.6) window.Voi.hands(ctx, { x: mx, y: restTop + 2 + Math.max(0, (1 - mq) * 18), s: 1 });
 
     const settled = !shown && p < 0.005 && Math.abs(pv) < 0.05 && mq < 0.01 && rings.length === 0;
     if (settled) { running = false; ctx.clearRect(0, 0, W, H); return; }

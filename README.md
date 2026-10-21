@@ -27,7 +27,9 @@ Pick a rarely used hotkey (default: Right Ctrl). Combinations like Ctrl+Alt+Spac
 `android/` is a native Kotlin app with the same pipeline (Groq Whisper, LLM cleanup, learned corrections, glossary), the same settings UI (`src/` runs in a WebView) and the same Voi mascot. The bubble pops out of the camera cutout. Builds are published as APKs under GitHub Releases (tags `android-v*`).
 
 - Enable the **Voiceo accessibility service** once (Settings, Accessibility): it draws the overlay, inserts the text into the focused field and watches that field to learn your corrections.
-- Start/stop a dictation with the Quick Settings tile, the launcher shortcut "Diktat" (Samsung: Side key, Double press, Open app), or the accessibility button/shortcut. Tap once to start, again to insert.
+- Start/stop a dictation with the key-sized Voi button above the keyboard (position, size and lock in Settings), the Quick Settings tile, the launcher shortcut or the accessibility button. Tap once to start, again to insert.
+- Sideloaded APKs are blocked by Android's "restricted settings" for accessibility services. Lift it over adb: `android/scripts/enable-a11y.sh dev.voiceo.app dev.voiceo.app.VoiceoAccessibilityService`.
+- With "keep in clipboard" off, text is inserted with ACTION_SET_TEXT and the clipboard is never touched (keyboard clipboard histories would record a paste).
 - Build: `cd android && ./gradlew :app:assembleDebug` (JDK 17-25, Android SDK in `local.properties`). Releases are signed with `VOICEO_KEYSTORE*` env vars.
 
 ## Learning in Electron apps (Claude Desktop, VS Code, ...)
