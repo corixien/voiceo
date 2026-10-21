@@ -45,6 +45,7 @@ class VoiceoAccessibilityService : AccessibilityService(), Dictation.Listener {
         groq = Groq(this)
         Dictation.listeners.add(this)
         buildOverlay()
+        refreshButton()
         runCatching {
             accessibilityButtonController.registerAccessibilityButtonCallback(object : AccessibilityButtonController.AccessibilityButtonCallback() {
                 override fun onClicked(controller: AccessibilityButtonController) { Dictation.toggle(this@VoiceoAccessibilityService) }
@@ -54,6 +55,7 @@ class VoiceoAccessibilityService : AccessibilityService(), Dictation.Listener {
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         Dictation.listeners.remove(this)
+        removeButton()
         detachOverlay()
         if (instance === this) instance = null
         return super.onUnbind(intent)
@@ -129,6 +131,7 @@ class VoiceoAccessibilityService : AccessibilityService(), Dictation.Listener {
     }
 
     override fun onState(state: String, message: String?) {
+        kbButton?.state = if (state == "listening" || state == "thinking" || state == "done" || state == "error") state else if (state == "learned") "done" else "idle"
         if (!store.settings().optBoolean("overlay", true)) return
         if (state != "idle") attachOverlay()
         js("VoiceoOverlay.state(${JSONObject.quote(state)},${if (message == null) "null" else JSONObject.quote(message)})")
@@ -140,9 +143,107 @@ class VoiceoAccessibilityService : AccessibilityService(), Dictation.Listener {
     }
 
     override fun onAudio(rms: Float, bands: FloatArray) {
+        kbButton?.level = rms
         if (!overlayAttached) return
         val arr = JSONArray(); bands.forEach { arr.put(it.toDouble()) }
         js("VoiceoOverlay.audio($rms,$arr)")
+    }
+
+    // ---------- keyboard button ----------
+
+    private var kbButton: KeyboardButton? = null
+    private var kbParams: WindowManager.LayoutParams? = null
+
+    private fun keyboardTop(): Int? {
+        val ws = windows ?: return null
+        var top: Int? = null
+        val r = android.graphics.Rect()
+        for (w in ws) {
+            if (w.type != android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) continue
+            w.getBoundsInScreen(r)
+            if (r.height() > 0) top = if (top == null) r.top else minOf(top, r.top)
+        }
+        return top
+    }
+
+    private fun removeButton() {
+        val b = kbButton ?: return
+        runCatching { getSystemService(WindowManager::class.java).removeView(b) }
+        kbButton = null; kbParams = null
+    }
+
+    /** Shows the key-sized Voi button above the keyboard while one is visible; hides it otherwise. */
+    fun refreshButton() {
+        val s = store.settings()
+        val top = if (s.optBoolean("kb_button", true)) keyboardTop() else null
+        if (top == null) { removeButton(); return }
+        val d = density()
+        val size = (s.optInt("kb_button_size", 44).coerceIn(28, 120) * d).toInt()
+        val screen = getSystemService(WindowManager::class.java).currentWindowMetrics.bounds
+        val x = (s.optDouble("kb_button_x", 0.9).coerceIn(0.0, 1.0) * (screen.width() - size)).toInt()
+        val y = (top - size - s.optDouble("kb_button_y", 6.0) * d).toInt().coerceAtLeast(0)
+        val wm = getSystemService(WindowManager::class.java)
+        val b = kbButton
+        if (b == null) {
+            val btn = KeyboardButton(this)
+            val lp = WindowManager.LayoutParams(
+                size, size, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT,
+            )
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.x = x; lp.y = y
+            lp.setTitle("Voiceo keyboard button")
+            btn.state = if (Dictation.state == "idle") "idle" else Dictation.state
+            btn.unlocked = !s.optBoolean("kb_button_locked", false)
+            btn.setOnTouchListener(buttonTouch())
+            if (runCatching { wm.addView(btn, lp) }.isSuccess) { kbButton = btn; kbParams = lp }
+        } else {
+            val lp = kbParams ?: return
+            if (dragging) return
+            lp.width = size; lp.height = size; lp.x = x; lp.y = y
+            b.unlocked = !s.optBoolean("kb_button_locked", false)
+            runCatching { wm.updateViewLayout(b, lp) }
+        }
+    }
+
+    private var dragging = false
+
+    private fun buttonTouch(): android.view.View.OnTouchListener {
+        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
+        return android.view.View.OnTouchListener { v, e ->
+            val lp = kbParams ?: return@OnTouchListener false
+            val movable = !store.settings().optBoolean("kb_button_locked", false)
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; startX = lp.x; startY = lp.y; moved = false; v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(90).start(); true }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - downX; val dy = e.rawY - downY
+                    if (movable && (moved || kotlin.math.hypot(dx, dy) > 12 * density())) {
+                        moved = true; dragging = true
+                        val screen = getSystemService(WindowManager::class.java).currentWindowMetrics.bounds
+                        lp.x = (startX + dx).toInt().coerceIn(0, screen.width() - lp.width)
+                        lp.y = (startY + dy).toInt().coerceIn(0, screen.height() - lp.height)
+                        runCatching { getSystemService(WindowManager::class.java).updateViewLayout(v, lp) }
+                    }
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+                    if (moved) {
+                        val top = keyboardTop() ?: (lp.y + lp.height)
+                        val screen = getSystemService(WindowManager::class.java).currentWindowMetrics.bounds
+                        store.setButtonPos(lp.x.toDouble() / maxOf(1, screen.width() - lp.width), (top - lp.height - lp.y) / density().toDouble())
+                        dragging = false
+                    } else if (e.actionMasked == android.view.MotionEvent.ACTION_UP) {
+                        v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        Dictation.toggle(this@VoiceoAccessibilityService)
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     // ---------- insertion ----------
@@ -286,6 +387,7 @@ class VoiceoAccessibilityService : AccessibilityService(), Dictation.Listener {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED || event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) refreshButton()
         val t = track ?: return
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {

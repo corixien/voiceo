@@ -24,7 +24,18 @@ class Store(ctx: Context) {
         s
     }
 
+    /** Position of the keyboard button is owned by the service (drag), never by the settings UI. */
     fun saveSettings(s: JSONObject) = synchronized(lock) {
+        val cur = settings()
+        s.put("kb_button_x", cur.optDouble("kb_button_x", 0.9)).put("kb_button_y", cur.optDouble("kb_button_y", 6.0))
+        writeSettings(s)
+    }
+
+    fun setButtonPos(x: Double, y: Double) = synchronized(lock) {
+        writeSettings(settings().put("kb_button_x", x).put("kb_button_y", y))
+    }
+
+    private fun writeSettings(s: JSONObject) {
         settingsFile.writeText(s.toString(2))
         settingsFile.setReadable(false, false); settingsFile.setReadable(true, true)
     }
@@ -110,6 +121,11 @@ class Store(ctx: Context) {
                 .put("auto_learn", true)
                 .put("theme", "system")
                 .put("font", "lexend")
+                .put("kb_button", true)
+                .put("kb_button_size", 44)
+                .put("kb_button_locked", false)
+                .put("kb_button_x", 0.9)
+                .put("kb_button_y", 6.0)
                 .put("ui_lang", if (de) "de" else "en")
         }
     }

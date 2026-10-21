@@ -30,7 +30,7 @@ object Dictation {
         main.post { listeners.forEach { it.onState(state, message) } }
     }
 
-    fun emitAudio(rms: Float, bands: FloatArray) { listeners.forEach { it.onAudio(rms, bands) } }
+    fun emitAudio(rms: Float, bands: FloatArray) { main.post { listeners.forEach { it.onAudio(rms, bands) } } }
 
     fun hasMic(ctx: Context) = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 

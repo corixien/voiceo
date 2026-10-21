@@ -150,7 +150,16 @@ class MainActivity : Activity(), Dictation.Listener {
 
         private fun run(cmd: String, a: JSONObject): String = when (cmd) {
             "get_settings" -> store.settings().toString()
-            "save_settings" -> { store.saveSettings(a.getJSONObject("settings")); "null" }
+            "save_settings" -> {
+                store.saveSettings(a.getJSONObject("settings"))
+                runOnUiThread { VoiceoAccessibilityService.instance?.refreshButton() }
+                "null"
+            }
+            "reset_kb_button" -> {
+                store.setButtonPos(0.9, 6.0)
+                runOnUiThread { VoiceoAccessibilityService.instance?.refreshButton() }
+                "null"
+            }
             "get_learned" -> learnedJson(store.learnedItems())
             "add_learned" -> learnedJson(store.addLearned(a.optString("from"), a.optString("to")))
             "delete_learned" -> learnedJson(store.deleteLearned(a.optString("from"), a.optString("to")))
