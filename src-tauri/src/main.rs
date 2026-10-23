@@ -517,6 +517,11 @@ fn system_status(state: State<AppState>) -> serde_json::Value {
 
 /// Wayland resolves the app icon through a .desktop file matching the app id ("voiceo").
 fn install_desktop_entry() {
+    // A debug binary loads its UI from the dev server (127.0.0.1:1430) and shows "connection refused"
+    // when launched from the menu, so only release builds may own the desktop entry.
+    if cfg!(debug_assertions) {
+        return;
+    }
     let Some(home) = std::env::var_os("HOME") else { return };
     let home = std::path::PathBuf::from(home);
     let Ok(exe) = std::env::current_exe() else { return };
